@@ -20,8 +20,8 @@ keyword         break|continue|char|do|else|for|if|int|long|signed|sizeof|struct
 escape_sequence "\\n"|"\\t"|"\\'"|"\\\""|"\\\\"|"\\0"
 string_char     [^\n"]|{escape_sequence}
 char_char       [^\n'\\]|{escape_sequence}
-operator        "."|"->"|"&"|"*"|"+"|"-"|"~"|"!"|"/"|"%"|"<<"|">>"|"<"|">"|"<="|">="|"=="|"!="|"^"|"|"|"&&"|"||"|"="|","
-punctuator      [{}\[\]();]
+operator        "."|"->"|"&"|"*"|"+"|"-"|"~"|"!"|"/"|"%"|"<<"|">>"|"<"|">"|"<="|">="|"=="|"!="|"^"|"|"|"&&"|"||"|"="|","|"++"|"--"
+punctuator      [\{\}\[\]();]
 line_comment    "//"
 
 %x C_COMMENT
