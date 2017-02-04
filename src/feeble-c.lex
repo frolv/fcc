@@ -1,13 +1,10 @@
-/*
- * Feeble C lex specification.
- * Alexei Frolov
- */
+/* Feeble C lex specification */
 
 %option noyywrap
-%option outfile="scan.c" header-file="scan.h"
 
 %{
 %}
+
 nonzero_digit   [1-9]
 digit           {nonzero_digit}|0
 octal_digit     [0-7]
@@ -16,35 +13,77 @@ hex_prefix      0[xX]
 unsigned        [uU]
 letter          [a-zA-Z]
 id_nondigit     {letter}|"_"
-keyword         break|continue|char|do|else|for|if|int|long|signed|sizeof|struct|unsigned|void|while|return
 escape_sequence "\\n"|"\\t"|"\\'"|"\\\""|"\\\\"|"\\0"
 string_char     [^\n"]|{escape_sequence}
 char_char       [^\n'\\]|{escape_sequence}
-operator        "."|"->"|"&"|"*"|"+"|"-"|"~"|"!"|"/"|"%"|"<<"|">>"|"<"|">"|"<="|">="|"=="|"!="|"^"|"|"|"&&"|"||"|"="|","|"++"|"--"
-punctuator      [\{\}\[\]();]
 line_comment    "//"
 
 %x C_COMMENT
-%x C_LINE_COMMENT
 
 %%
 
-{keyword}                               { printf("Keyword:\t%s\n", yytext); }
-{id_nondigit}({id_nondigit}|{digit})*   { printf("Identifier:\t%s\n", yytext); }
-{hex_prefix}{hex_digit}*{unsigned}?     { printf("Number:\t\t%s\n", yytext); }
-{nonzero_digit}*{unsigned}?             { printf("Number:\t\t%s\n", yytext); }
-0{octal_digit}*{unsigned}?              { printf("Number:\t\t%s\n", yytext); }
-{operator}                              { printf("Operator:\t%s\n", yytext); }
-{punctuator}                            { printf("Punctuator:\t%s\n", yytext); }
-\"{string_char}*\"                      { printf("String Lit:\t%s\n", yytext); }
-'{char_char}'                           { printf("Char Lit:\t%s\n", yytext); }
+break                                   { return TOKEN_BREAK; }
+continue                                { return TOKEN_CONTINUE; }
+char                                    { return TOKEN_CHAR; }
+do                                      { return TOKEN_DO; }
+else                                    { return TOKEN_ELSE; }
+for                                     { return TOKEN_FOR; }
+if                                      { return TOKEN_IF; }
+int                                     { return TOKEN_INT; }
+signed                                  { return TOKEN_SIGNED; }
+sizeof                                  { return TOKEN_SIZEOF; }
+struct                                  { return TOKEN_STRUCT; }
+unsigned                                { return TOKEN_UNSIGNED; }
+void                                    { return TOKEN_VOID; }
+while                                   { return TOKEN_WHILE; }
+return                                  { return TOKEN_RETURN; }
+
+"["                                     { return '['; }
+"]"                                     { return ']'; }
+"{"                                     { return '{'; }
+"}"                                     { return '}'; }
+"("                                     { return '('; }
+")"                                     { return ')'; }
+
+"."                                     { return '.' }
+"&"                                     { return '&'; }
+"*"                                     { return '*'; }
+"+"                                     { return '+'; }
+"-"                                     { return '-'; }
+"~"                                     { return '~'; }
+"!"                                     { return '!'; }
+"/"                                     { return '/'; }
+"%"                                     { return '%'; }
+"<"                                     { return '<'; }
+">"                                     { return '>'; }
+"^"                                     { return '^'; }
+"|"                                     { return '|'; }
+"="                                     { return '='; }
+","                                     { return ','; }
+
+"->"                                    { return TOKEN_PTR; }
+"<<"                                    { return TOKEN_LSHIFT; }
+">>"                                    { return TOKEN_RSHIFT; }
+"<="                                    { return TOKEN_LE; }
+">="                                    { return TOKEN_GE; }
+"=="                                    { return TOKEN_EQ; }
+"!="                                    { return TOKEN_NEQ; }
+"&&"                                    { return TOKEN_AND; }
+"||"                                    { return TOKEN_OR; }
+"++"                                    { return TOKEN_INC; }
+"--"                                    { return TOKEN_DEC; }
+
+{id_nondigit}({id_nondigit}|{digit})*   { return TOKEN_ID; }
+{hex_prefix}{hex_digit}*{unsigned}?     { return TOKEN_CONSTANT; }
+{nonzero_digit}*{unsigned}?             { return TOKEN_CONSTANT; }
+0{octal_digit}*{unsigned}?              { return TOKEN_CONSTANT; }
+\"{string_char}*\"                      { return TOKEN_STRLIT; }
+'{char_char}'                           { return TOKEN_CONSTANT; }
 [ \t\n\r]                               { /* skip whitespace */ }
 "/*"                                    { BEGIN(C_COMMENT); }
 <C_COMMENT>"*/"                         { BEGIN(INITIAL); }
 <C_COMMENT>.|\n                         { }
-{line_comment}                          { BEGIN(C_LINE_COMMENT); }
-<C_LINE_COMMENT>\n                      { BEGIN(INITIAL); }
-<C_LINE_COMMENT>.                       { }
+{line_comment}.*                        { }
 .                                       { fprintf(stderr, "unrecognized character: %s\n", yytext); exit(1); }
 
 %%
