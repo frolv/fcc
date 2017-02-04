@@ -1,6 +1,7 @@
 /* Feeble C lex specification */
 
 %option noyywrap
+%option reentrant bison-bridge
 
 %{
 %}
@@ -87,8 +88,3 @@ return                                  { return TOKEN_RETURN; }
 .                                       { fprintf(stderr, "unrecognized character: %s\n", yytext); exit(1); }
 
 %%
-
-int main(int argc, char **argv)
-{
-	yylex();
-}
