@@ -7,13 +7,15 @@
 #include <stdio.h>
 
 #include "ast.h"
+#include "fcc.h"
 #include "parse.h"
 #include "scan.h"
+#include "symtab.h"
 
 void yyerror(yyscan_t scanner, char *err)
 {
-	fprintf(stderr, "%d:%d: %s\n", yyget_lineno(scanner),
-	        yyget_column(scanner) + 1, err);
+	fprintf(stderr, "%s: line %d: %s\n", fcc_filename,
+	        yyget_lineno(scanner), err);
 }
 %}
 
@@ -22,6 +24,11 @@ void yyerror(yyscan_t scanner, char *err)
 #define YY_TYPEDEF_YY_SCANNER_T
 typedef void * yyscan_t;
 #endif
+}
+
+%union {
+	unsigned int flags;
+	struct ast_node *node;
 }
 
 /* Make the parser reentrant instead of using global variables. */
@@ -36,7 +43,16 @@ typedef void * yyscan_t;
 %token TOKEN_AND TOKEN_OR TOKEN_EQ TOKEN_NEQ TOKEN_GE TOKEN_LE
 %token TOKEN_LSHIFT TOKEN_RSHIFT TOKEN_INC TOKEN_DEC TOKEN_PTR
 
-%start translation_unit
+%start block_item_list
+
+%type <flags> type_specifier
+%type <flags> type_specifiers
+%type <flags> declaration_specifiers
+%type <flags> pointer
+
+%type <node> direct_declarator
+%type <node> declarator_list
+%type <node> declarator
 
 %%
 
@@ -60,25 +76,25 @@ function_def
 
 type_specifiers
 	: type_specifier
-	: type_specifiers type_specifier
+	| type_specifiers type_specifier { $$ = $1 | $2; }
 	;
 
 type_specifier
-	: TOKEN_VOID
-	| TOKEN_CHAR
-	| TOKEN_INT
-	| TOKEN_SIGNED
-	| TOKEN_UNSIGNED
+	: TOKEN_VOID { $$ = TYPE_VOID; }
+	| TOKEN_CHAR { $$ = TYPE_CHAR; }
+	| TOKEN_INT { $$ = TYPE_INT; }
+	| TOKEN_SIGNED { $$ = 0; }
+	| TOKEN_UNSIGNED { $$ = QUAL_UNSIGNED; }
 	;
 
-/* Function delcarator, e.g. foo(int a, int b) */
+/* Variable or function declarator. */
 declarator
-	: pointer direct_declarator
+	: pointer direct_declarator { $2->sym->flags |= ($1 << 24); $$ = $2; }
 	| direct_declarator
 	;
 
 direct_declarator
-	: TOKEN_ID
+	: TOKEN_ID { $$ = create_node(NODE_IDENTIFIER, yyget_text(scanner)); }
 	| direct_declarator '(' parameter_list ')'
 	| direct_declarator '(' ')'
 	;
@@ -143,18 +159,32 @@ jump_statement
 	;
 
 declaration
-	: declaration_specifiers ';'
+	: declaration_specifiers declarator_list ';' {
+		if (ast_decl_set_type($2, $1) != 0) {
+			free_tree($2);
+			exit(1);
+		}
+		print_ast(stdout, $2);
+		free_tree($2);
+	}
 	;
 
 declaration_specifiers
 	: type_specifier
-	| type_specifier declaration_specifiers
+	| type_specifier declaration_specifiers { $$ = $1 | $2; }
+	;
+
+declarator_list
+	: declarator
+	| declarator ',' declarator_list {
+		$$ = create_expr(EXPR_COMMA, 0, $1, $3);
+	}
 	;
 
 /* how many levels of indirection are you on? */
 pointer
-	: '*' pointer
-	| '*'
+	: '*' pointer { $$ = $2 + 1; }
+	| '*' { $$ = 1; }
 	;
 
 /* the following expressions appear in order of operator precedence */
