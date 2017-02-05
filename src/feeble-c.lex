@@ -2,8 +2,10 @@
 
 %option noyywrap
 %option reentrant bison-bridge
+%option yylineno
 
 %{
+#include "parse.h"
 %}
 
 nonzero_digit   [1-9]
@@ -46,7 +48,7 @@ return                                  { return TOKEN_RETURN; }
 "("                                     { return '('; }
 ")"                                     { return ')'; }
 
-"."                                     { return '.' }
+"."                                     { return '.'; }
 "&"                                     { return '&'; }
 "*"                                     { return '*'; }
 "+"                                     { return '+'; }

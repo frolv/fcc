@@ -6,12 +6,23 @@
 %{
 #include <stdio.h>
 
-int yyerror(char *err)
-{
-	fprintf(stderr, "error: %s\n", err);
-}
+#include "ast.h"
+#include "parse.h"
+#include "scan.h"
 
+void yyerror(yyscan_t scanner, char *err)
+{
+	fprintf(stderr, "%d:%d: %s\n", yyget_lineno(scanner),
+	        yyget_column(scanner) + 1, err);
+}
 %}
+
+%code requires {
+#ifndef YY_TYPEDEF_YY_SCANNER_T
+#define YY_TYPEDEF_YY_SCANNER_T
+typedef void * yyscan_t;
+#endif
+}
 
 /* Make the parser reentrant instead of using global variables. */
 %define api.pure full
