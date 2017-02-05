@@ -5,6 +5,7 @@
 %option yylineno
 
 %{
+#include "fcc.h"
 #include "parse.h"
 %}
 
@@ -63,6 +64,7 @@ return                                  { return TOKEN_RETURN; }
 "|"                                     { return '|'; }
 "="                                     { return '='; }
 ","                                     { return ','; }
+";"                                     { return ';'; }
 
 "->"                                    { return TOKEN_PTR; }
 "<<"                                    { return TOKEN_LSHIFT; }
