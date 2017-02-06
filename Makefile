@@ -23,7 +23,7 @@ all: parser compiler
 $(PARSE_SRC) $(PARSE_H): $(SRCDIR)/feeble-c.y
 	$(YACC) --defines=$(PARSE_H) -o $(PARSE_SRC) $<
 
-$(SCAN_SRC) $(SCAN_H): $(SRCDIR)/feeble-c.lex $(PARSE_H)
+$(SCAN_SRC) $(SCAN_H): $(SRCDIR)/feeble-c.l $(PARSE_H)
 	$(LEX) --header-file=$(SCAN_H) -o $(SCAN_SRC) $<
 
 parser: $(PARSE_SRC) $(PARSE_H) $(SCAN_SRC)
