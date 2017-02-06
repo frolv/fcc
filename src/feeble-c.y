@@ -27,7 +27,7 @@ typedef void * yyscan_t;
 }
 
 %union {
-	unsigned int flags;
+	unsigned int value;
 	struct ast_node *node;
 }
 
@@ -45,14 +45,33 @@ typedef void * yyscan_t;
 
 %start block_item_list
 
-%type <flags> type_specifier
-%type <flags> type_specifiers
-%type <flags> declaration_specifiers
-%type <flags> pointer
+%type <value> type_specifier
+%type <value> type_specifiers
+%type <value> type_name
+%type <value> declaration_specifiers
+%type <value> pointer
+%type <value> unary_op
 
 %type <node> direct_declarator
 %type <node> declarator_list
 %type <node> declarator
+%type <node> expr
+%type <node> assign_expr
+%type <node> logical_or_expr
+%type <node> logical_and_expr
+%type <node> or_expr
+%type <node> xor_expr
+%type <node> and_expr
+%type <node> equality_expr
+%type <node> relational_expr
+%type <node> shift_expr
+%type <node> additive_expr
+%type <node> multiplicative_expr
+%type <node> cast_expr
+%type <node> unary_expr
+%type <node> postfix_expr
+%type <node> expression
+%type <node> argument_list
 
 %%
 
@@ -76,7 +95,14 @@ function_def
 
 type_specifiers
 	: type_specifier
-	| type_specifiers type_specifier { $$ = $1 | $2; }
+	| type_specifiers type_specifier {
+		if (FLAGS_TYPE($1) && FLAGS_TYPE($2)) {
+			/* TODO: proper error handling */
+			yyerror(scanner, "multiple types given for expression\n");
+			exit(1);
+		}
+		$$ = $1 | $2;
+	}
 	;
 
 type_specifier
@@ -85,6 +111,11 @@ type_specifier
 	| TOKEN_INT { $$ = TYPE_INT; }
 	| TOKEN_SIGNED { $$ = 0; }
 	| TOKEN_UNSIGNED { $$ = QUAL_UNSIGNED; }
+	;
+
+type_name
+	: type_specifiers
+	| type_specifiers pointer
 	;
 
 /* Variable or function declarator. */
@@ -135,7 +166,7 @@ statement
 
 expression_statement
 	: ';'
-	| expr ';'
+	| expr ';' { print_ast(stdout, $1); free_tree($1); }
 	;
 
 conditional_statement
@@ -171,13 +202,20 @@ declaration
 
 declaration_specifiers
 	: type_specifier
-	| type_specifier declaration_specifiers { $$ = $1 | $2; }
+	| type_specifier declaration_specifiers {
+		if (FLAGS_TYPE($1) && FLAGS_TYPE($2)) {
+			/* TODO: proper error handling */
+			yyerror(scanner, "multiple types given for expression\n");
+			exit(1);
+		}
+		$$ = $1 | $2;
+	}
 	;
 
 declarator_list
 	: declarator
 	| declarator ',' declarator_list {
-		$$ = create_expr(EXPR_COMMA, 0, $1, $3);
+		$$ = create_expr(EXPR_COMMA, $1, $3);
 	}
 	;
 
@@ -190,116 +228,158 @@ pointer
 /* the following expressions appear in order of operator precedence */
 expr
 	: assign_expr
-	| expr ',' assign_expr
+	| expr ',' assign_expr { $$ = create_expr(EXPR_COMMA, $1, $3); }
 	;
 
 assign_expr
 	: logical_or_expr
-	| unary_expr assign_op assign_expr
+	| unary_expr assign_op assign_expr {
+		$$ = create_expr(EXPR_ASSIGN, $1, $3);
+	}
 	;
 
 logical_or_expr
 	: logical_and_expr
-	| logical_or_expr TOKEN_OR logical_and_expr
+	| logical_or_expr TOKEN_OR logical_and_expr {
+		$$ = create_expr(EXPR_LOGICAL_OR, $1, $3);
+	}
 	;
 
 logical_and_expr
 	: or_expr
-	| logical_and_expr TOKEN_AND or_expr
+	| logical_and_expr TOKEN_AND or_expr {
+		$$ = create_expr(EXPR_LOGICAL_AND, $1, $3);
+	}
 	;
 
 or_expr
 	: xor_expr
-	| or_expr '|' xor_expr
+	| or_expr '|' xor_expr { $$ = create_expr(EXPR_OR, $1, $3); }
 	;
 
 xor_expr
 	: and_expr
-	| xor_expr '^' and_expr
+	| xor_expr '^' and_expr { $$ = create_expr(EXPR_XOR, $1, $3); }
 	;
 
 and_expr
 	: equality_expr
-	| and_expr '&' equality_expr
+	| and_expr '&' equality_expr { $$ = create_expr(EXPR_AND, $1, $3); }
 	;
 
 equality_expr
 	: relational_expr
-	| equality_expr TOKEN_EQ relational_expr
-	| equality_expr TOKEN_NEQ relational_expr
+	| equality_expr TOKEN_EQ relational_expr {
+		$$ = create_expr(EXPR_EQ, $1, $3);
+	}
+	| equality_expr TOKEN_NEQ relational_expr {
+		$$ = create_expr(EXPR_NE, $1, $3);
+	}
 	;
 
 relational_expr
 	: shift_expr
-	| relational_expr '<' shift_expr
-	| relational_expr '>' shift_expr
-	| relational_expr TOKEN_LE shift_expr
-	| relational_expr TOKEN_GE shift_expr
+	| relational_expr '<' shift_expr { $$ = create_expr(EXPR_LT, $1, $3); }
+	| relational_expr '>' shift_expr { $$ = create_expr(EXPR_GT, $1, $3); }
+	| relational_expr TOKEN_LE shift_expr {
+		$$ = create_expr(EXPR_LE, $1, $3);
+	}
+	| relational_expr TOKEN_GE shift_expr {
+		$$ = create_expr(EXPR_GE, $1, $3);
+	}
 	;
 
 shift_expr
 	: additive_expr
-	| shift_expr TOKEN_LSHIFT additive_expr
-	| shift_expr TOKEN_RSHIFT additive_expr
+	| shift_expr TOKEN_LSHIFT additive_expr {
+		$$ = create_expr(EXPR_LSHIFT, $1, $3);
+	}
+	| shift_expr TOKEN_RSHIFT additive_expr {
+		$$ = create_expr(EXPR_RSHIFT, $1, $3);
+	}
 	;
 
 additive_expr
 	: multiplicative_expr
-	| additive_expr '+' multiplicative_expr
-	| additive_expr '-' multiplicative_expr
+	| additive_expr '+' multiplicative_expr {
+		$$ = create_expr(EXPR_ADD, $1, $3);
+	}
+	| additive_expr '-' multiplicative_expr {
+		$$ = create_expr(EXPR_SUB, $1, $3);
+	}
 	;
 
 multiplicative_expr
 	: cast_expr
-	| multiplicative_expr '*' cast_expr
-	| multiplicative_expr '/' cast_expr
-	| multiplicative_expr '%' cast_expr
+	| multiplicative_expr '*' cast_expr {
+		$$ = create_expr(EXPR_MULT, $1, $3);
+	}
+	| multiplicative_expr '/' cast_expr {
+		$$ = create_expr(EXPR_DIV, $1, $3);
+	}
+	| multiplicative_expr '%' cast_expr {
+		$$ = create_expr(EXPR_MOD, $1, $3);
+	}
 	;
 
 /* almost there... */
 cast_expr
 	: unary_expr
-	| '(' type_specifiers ')' cast_expr
+	| '(' type_name ')' cast_expr { /* ast_cast($2, $1); */ $$ = $4; }
 	;
 
 unary_expr
 	: postfix_expr
 	| TOKEN_INC unary_expr
 	| TOKEN_DEC unary_expr
-	| unary_op cast_expr
+	| unary_op cast_expr { $$ = create_expr($1, $2, NULL); }
 	| TOKEN_SIZEOF unary_expr
 	| TOKEN_SIZEOF '(' type_specifiers ')'
 	;
 
 postfix_expr
 	: expression
-	| postfix_expr '[' expr ']'
+	| postfix_expr '[' expr ']' {
+		$$ = create_expr(EXPR_DEREFERENCE,
+		                 create_expr(EXPR_ADD, $1, $3),
+		                 NULL);
+	}
 	| postfix_expr '.' TOKEN_ID
 	| postfix_expr TOKEN_PTR TOKEN_ID
 	| postfix_expr TOKEN_INC
 	| postfix_expr TOKEN_DEC
-	| postfix_expr '(' ')'
+	| postfix_expr '(' ')' { $$ = create_expr(EXPR_FUNC, $1, NULL); }
+	| postfix_expr '(' argument_list ')' {
+		$$ = create_expr(EXPR_FUNC, $1, $3);
+	}
 	;
 
 /* The lowest level expression with the highest precedence. */
 expression
-	: TOKEN_ID
-	| TOKEN_CONSTANT
-	| TOKEN_STRLIT
-	| '(' expr ')'
+	: TOKEN_ID {
+		$$ = create_node(NODE_IDENTIFIER, yyget_text(scanner));
+	}
+	| TOKEN_CONSTANT { $$ = create_node(NODE_CONSTANT, yyget_text(scanner)); }
+	| TOKEN_STRLIT { $$ = create_node(NODE_STRLIT, yyget_text(scanner)); }
+	| '(' expr ')' { $$ = $2; }
 	;
 
 unary_op
-	: '&'
-	| '*'
-	| '+'
-	| '-'
-	| '~'
-	| '!'
+	: '&' { $$ = EXPR_ADDRESS; }
+	| '*' { $$ = EXPR_DEREFERENCE; }
+	| '+' { $$ = EXPR_UNARY_PLUS; }
+	| '-' { $$ = EXPR_UNARY_MINUS; }
+	| '~' { $$ = EXPR_NOT; }
+	| '!' { $$ = EXPR_LOGICAL_NOT; }
 	;
 
 assign_op
 	: '='
+	;
+
+argument_list
+	: assign_expr
+	| argument_list ',' assign_expr { $$ = create_expr(EXPR_COMMA, $1, $3); }
 	;
 
 %%
