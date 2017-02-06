@@ -80,7 +80,7 @@ return                                  { return TOKEN_RETURN; }
 
 {id_nondigit}({id_nondigit}|{digit})*   { return TOKEN_ID; }
 {hex_prefix}{hex_digit}*{unsigned}?     { return TOKEN_CONSTANT; }
-{nonzero_digit}*{unsigned}?             { return TOKEN_CONSTANT; }
+{nonzero_digit}{digit}*{unsigned}?      { return TOKEN_CONSTANT; }
 0{octal_digit}*{unsigned}?              { return TOKEN_CONSTANT; }
 \"{string_char}*\"                      { return TOKEN_STRLIT; }
 '{char_char}'                           { return TOKEN_CONSTANT; }
