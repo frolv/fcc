@@ -106,15 +106,15 @@ void free_tree(struct ast_node *root)
  * Set the types of all identifiers in AST declaration statement
  * starting at `root` to `flags`.
  */
-int ast_decl_set_type(struct ast_node *root, unsigned int flags)
+int ast_decl_set_type(struct ast_node *root, unsigned int type_flags)
 {
 	/*
 	 * Variables can be declared without an explicit type,
 	 * e.g. `unsigned i`, in which case the type is assumed
 	 * to be int.
 	 */
-	if (!FLAGS_TYPE(flags))
-		flags |= TYPE_INT;
+	if (!FLAGS_TYPE(type_flags))
+		type_flags |= TYPE_INT;
 
 	if (root->tag == NODE_IDENTIFIER) {
 		if (root->sym->flags & 0xFF) {
@@ -124,22 +124,63 @@ int ast_decl_set_type(struct ast_node *root, unsigned int flags)
 			        root->lexeme);
 			return 1;
 		}
-		root->sym->flags |= flags;
+		root->sym->flags |= type_flags;
 		root->expr_flags = root->sym->flags;
 	} else if (root->tag == EXPR_COMMA) {
-		root->expr_flags = flags;
+		root->expr_flags = type_flags;
 	}
 
 	if (root->left) {
-		if (ast_decl_set_type(root->left, flags) != 0)
+		if (ast_decl_set_type(root->left, type_flags) != 0)
 			return 1;
 	}
 	if (root->right) {
-		if (ast_decl_set_type(root->right, flags) != 0)
+		if (ast_decl_set_type(root->right, type_flags) != 0)
 			return 1;
 	}
 
 	return 0;
+}
+
+/*
+ * ast_cast:
+ * Cast the expression `expr` to the type specified by `type_flags`.
+ */
+int ast_cast(struct ast_node *expr, unsigned int type_flags)
+{
+	int expr_type, expr_flags, flags_type;
+
+	expr_flags = expr->expr_flags;
+	expr_type = FLAGS_TYPE(expr_flags);
+	flags_type = FLAGS_TYPE(type_flags);
+
+	if (FLAGS_ISPTR(type_flags)) {
+		/* A pointer type can be cast to any other pointer type. */
+		if (FLAGS_ISPTR(expr_flags)) {
+			expr->expr_flags = type_flags;
+			return 0;
+		}
+
+		/* An integer type can be cast to any pointer type. */
+		if (expr_type == TYPE_INT || expr_type == TYPE_CHAR) {
+			expr->expr_flags = type_flags;
+			return 0;
+		}
+	} else if (flags_type == TYPE_INT || flags_type == TYPE_CHAR) {
+		/* A pointer can be cast to an integer type. */
+		if (FLAGS_ISPTR(expr_flags)) {
+			expr->expr_flags = type_flags;
+			return 0;
+		}
+
+		/* An integer type can be cast to another integer type. */
+		if (expr_type == TYPE_INT || expr_type == TYPE_CHAR) {
+			expr->expr_flags = type_flags;
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 /* char_const_val: convert character constant string to integer value */
@@ -192,10 +233,39 @@ static void check_address_type(struct ast_node *expr)
 	expr->expr_flags |= indirection << 24;
 }
 
+/*
+ * check_dereference_type:
+ */
+static void check_dereference_type(struct ast_node *expr)
+{
+	unsigned int indirection;
+
+	if (!FLAGS_ISPTR(expr->left->expr_flags)) {
+		fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
+		        "cannot dereference non-pointer type\n");
+		exit(1);
+	}
+
+	expr->expr_flags = expr->left->expr_flags;
+	indirection = (expr->expr_flags >> 24) - 1;
+	expr->expr_flags &= 0x00FFFFFF;
+	expr->expr_flags |= indirection << 24;
+}
+
+static void check_func_type(struct ast_node *expr)
+{
+	/*
+	 * If a function does not exist in the symbol table,
+	 * its return type is assumed to be int.
+	 */
+	expr->expr_flags = TYPE_INT;
+}
+
 static void (*expr_type_func[])(struct ast_node *) = {
 	[EXPR_ASSIGN] = check_assign_type,
 	[EXPR_ADDRESS] = check_address_type,
-	[EXPR_FUNC] = check_assign_type
+	[EXPR_DEREFERENCE] = check_dereference_type,
+	[EXPR_FUNC] = check_func_type
 };
 
 /*

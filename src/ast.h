@@ -57,7 +57,8 @@ struct ast_node *create_expr(int expr, struct ast_node *lhs, struct ast_node *rh
 
 void free_tree(struct ast_node *root);
 
-int ast_decl_set_type(struct ast_node *root, unsigned int flags);
+int ast_decl_set_type(struct ast_node *root, unsigned int type_flags);
+int ast_cast(struct ast_node *expr, unsigned int type_flags);
 
 void print_ast(FILE *f, struct ast_node *root);
 

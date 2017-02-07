@@ -18,6 +18,8 @@ enum {
 #include "uthash.h"
 
 #define FLAGS_TYPE(x) ((x) & 0xF)
+#define FLAGS_ISPTR(x) ((x) & 0xFF000000)
+#define FLAGS_INDIRECTION(x) ((x) >> 24)
 
 /*
  * An entry in the symbol table.

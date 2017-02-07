@@ -14,8 +14,8 @@
 
 void yyerror(yyscan_t scanner, char *err)
 {
-	fprintf(stderr, "%s: line %d: %s\n", fcc_filename,
-	        yyget_lineno(scanner), err);
+	fprintf(stderr, "\x1B[1;37m%s: line %d:\x1B[0;37m %s\n",
+	        fcc_filename, yyget_lineno(scanner), err);
 }
 %}
 
@@ -115,7 +115,7 @@ type_specifier
 
 type_name
 	: type_specifiers
-	| type_specifiers pointer
+	| type_specifiers pointer { $$ = $1 | ($2 << 24); }
 	;
 
 /* Variable or function declarator. */
@@ -325,7 +325,13 @@ multiplicative_expr
 /* almost there... */
 cast_expr
 	: unary_expr
-	| '(' type_name ')' cast_expr { /* ast_cast($2, $1); */ $$ = $4; }
+	| '(' type_name ')' cast_expr {
+		if (ast_cast($4, $2) != 0) {
+			yyerror(scanner, "invalid cast");
+			exit(1);
+		}
+		$$ = $4;
+	}
 	;
 
 unary_expr
