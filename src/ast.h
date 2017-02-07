@@ -2,8 +2,8 @@
  * ast.h
  */
 
-#ifndef AST_H
-#define AST_H
+#ifndef FCC_AST_H
+#define FCC_AST_H
 
 enum {
 	NODE_CONSTANT,
@@ -62,4 +62,4 @@ int ast_cast(struct ast_node *expr, unsigned int type_flags);
 
 void print_ast(FILE *f, struct ast_node *root);
 
-#endif /* AST_H */
+#endif /* FCC_AST_H */
