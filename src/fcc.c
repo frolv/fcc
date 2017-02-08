@@ -7,6 +7,7 @@
 #include "fcc.h"
 #include "parse.h"
 #include "scan.h"
+#include "symtab.h"
 
 char *fcc_filename;
 
@@ -20,15 +21,18 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	if (!(f = fopen(argv[1], "r"))) {
+	if (strcmp(argv[1], "-") == 0) {
+		f = stdin;
+	} else if (!(f = fopen(argv[1], "r"))) {
 		perror(argv[1]);
 		return 1;
 	}
 
-	fcc_filename = argv[1];
+	fcc_filename = f == stdin ? "<stdin>" : argv[1];
 	yylex_init(&scanner);
 	yyset_in(f, scanner);
 
+	symtab_init();
 	yyparse(scanner);
 
 	yylex_destroy(scanner);

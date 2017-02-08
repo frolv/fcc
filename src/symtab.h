@@ -41,4 +41,8 @@ struct symbol {
 
 struct symbol *symtab_entry(char *id);
 
+void symtab_init(void);
+void symtab_new_scope(void);
+void symtab_destroy_scope(void);
+
 #endif /* FCC_SYMTAB_H */

@@ -143,7 +143,8 @@ parameter_declaration
 
 statement_block
 	: '{' '}'
-	| '{' block_item_list '}'
+	| '{' { symtab_new_scope(); } block_item_list
+	  { symtab_destroy_scope(); } '}'
 	;
 
 block_item_list
