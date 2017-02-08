@@ -125,7 +125,7 @@ declarator
 	;
 
 direct_declarator
-	: TOKEN_ID { $$ = create_node(NODE_IDENTIFIER, yyget_text(scanner)); }
+	: TOKEN_ID { $$ = create_node(NODE_NEWID, yyget_text(scanner)); }
 	| direct_declarator '(' parameter_list ')'
 	| direct_declarator '(' ')'
 	;

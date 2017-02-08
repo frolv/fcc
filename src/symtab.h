@@ -40,6 +40,8 @@ struct symbol {
 };
 
 struct symbol *symtab_entry(char *id);
+struct symbol *symtab_entry_scope(char *id);
+struct symbol *symtab_add(char *id, unsigned int flags);
 
 void symtab_init(void);
 void symtab_new_scope(void);

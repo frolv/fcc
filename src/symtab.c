@@ -14,8 +14,7 @@ static size_t ntables;
 
 /*
  * symtab_entry:
- * Fetch the entry for `id` from the symbol table,
- * or create one if it doesn't exist.
+ * Lookup `id` in the symbol table stack, starting with the most recent table.
  */
 struct symbol *symtab_entry(char *id)
 {
@@ -26,15 +25,39 @@ struct symbol *symtab_entry(char *id)
 	for (i = ntables - 1; i >= 0 && !s; --i)
 		HASH_FIND_STR(symtab_stack[i], id, s);
 
+	return s;
+}
+
+/*
+ * symtab_entry_scope:
+ * Lookup `id` in the current symbol table scope.
+ */
+struct symbol *symtab_entry_scope(char *id)
+{
+	struct symbol *s;
+
+	HASH_FIND_STR(symtab_stack[ntables - 1], id, s);
+	return s;
+}
+
+/*
+ * symtab_add:
+ * Add a new symbol to the current symbol table
+ * with the specified ID and type flags.
+ */
+struct symbol *symtab_add(char *id, unsigned int flags)
+{
+	struct symbol *s;
+
+	HASH_FIND_STR(symtab_stack[ntables - 1], id, s);
 	if (!s) {
 		s = malloc(sizeof *s);
 		s->id = strdup(id);
-		s->flags = 0;
+		s->flags = flags;
 
 		HASH_ADD_KEYPTR(hh, symtab_stack[ntables - 1],
 		                s->id, strlen(s->id), s);
 	}
-
 	return s;
 }
 
