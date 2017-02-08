@@ -96,8 +96,8 @@ void error_incompatible_op_types(struct ast_node *expr)
 	binop = op_binary(expr->tag);
 
 	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-	        "incompatible types for %s %s operator: `\x1B[1;35m",
-	        binop ? "binary" : "unary", op_sym[expr->tag]);
+	        "incompatible type%s for %s %s operator: `\x1B[1;35m",
+	        binop ? "s" : "", binop ? "binary" : "unary", op_sym[expr->tag]);
 
 	err_print_type(expr->left);
 	if (binop) {
@@ -105,4 +105,46 @@ void error_incompatible_op_types(struct ast_node *expr)
 		err_print_type(expr->right);
 	}
 	fprintf(stderr, "\x1B[0;37m'\n");
+}
+
+void error_assign_type(struct ast_node *expr)
+{
+	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
+	        "cannot assign to non-lvalue expression\n");
+	/* may do something with this later */
+	(void)expr;
+}
+
+void error_undeclared(struct ast_node *expr)
+{
+	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
+	        "undeclared identifier: \x1B[1;35m%s\x1B[0;37m\n",
+	        expr->lexeme);
+}
+
+void warning_imcompatible_ptr_assn(struct ast_node *expr)
+{
+	fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
+	        "assignment from incompatible pointer type: `\x1B[1;35m");
+	err_print_type(expr->right);
+	fprintf(stderr, "\x1B[0;37m' => `\x1B[1;35m");
+	err_print_type(expr->left);
+	fprintf(stderr, "\x1B[0;37m'\n");
+}
+
+void warning_imcompatible_ptr_cmp(struct ast_node *expr)
+{
+	fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
+	        "comparison between incompatible pointer types: `\x1B[1;35m");
+	err_print_type(expr->left);
+	fprintf(stderr, "\x1B[0;37m' and `\x1B[1;35m");
+	err_print_type(expr->right);
+	fprintf(stderr, "\x1B[0;37m'\n");
+}
+
+void warning_ptr_int_cmp(struct ast_node *expr)
+{
+	fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
+	        "comparison between integer and pointer without cast\n");
+	(void)expr;
 }
