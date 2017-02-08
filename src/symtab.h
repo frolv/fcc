@@ -2,8 +2,8 @@
  * symtab.h
  */
 
-#ifndef SYMTAB_H
-#define SYMTAB_H
+#ifndef FCC_SYMTAB_H
+#define FCC_SYMTAB_H
 
 enum {
 	TYPE_INT = 1,
@@ -18,7 +18,9 @@ enum {
 #include "uthash.h"
 
 #define FLAGS_TYPE(x) ((x) & 0xF)
-#define FLAGS_ISPTR(x) ((x) & 0xFF000000)
+#define FLAGS_IS_PTR(x) ((x) & 0xFF000000)
+#define FLAGS_IS_INTEGER(x) \
+	(FLAGS_TYPE(x) == TYPE_INT || FLAGS_TYPE(x) == TYPE_CHAR)
 #define FLAGS_INDIRECTION(x) ((x) >> 24)
 
 /*
@@ -38,4 +40,4 @@ struct symbol {
 
 struct symbol *symtab_entry(char *id);
 
-#endif /* SYMTAB_H */
+#endif /* FCC_SYMTAB_H */

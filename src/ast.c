@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "ast.h"
+#include "error.h"
 #include "symtab.h"
 
 static int char_const_val(char *lexeme);
@@ -148,33 +149,33 @@ int ast_decl_set_type(struct ast_node *root, unsigned int type_flags)
  */
 int ast_cast(struct ast_node *expr, unsigned int type_flags)
 {
-	int expr_type, expr_flags, flags_type;
+	int expr_flags;
 
 	expr_flags = expr->expr_flags;
-	expr_type = FLAGS_TYPE(expr_flags);
-	flags_type = FLAGS_TYPE(type_flags);
+	if (!FLAGS_TYPE(type_flags))
+		type_flags |= TYPE_INT;
 
-	if (FLAGS_ISPTR(type_flags)) {
+	if (FLAGS_IS_PTR(type_flags)) {
 		/* A pointer type can be cast to any other pointer type. */
-		if (FLAGS_ISPTR(expr_flags)) {
+		if (FLAGS_IS_PTR(expr_flags)) {
 			expr->expr_flags = type_flags;
 			return 0;
 		}
 
 		/* An integer type can be cast to any pointer type. */
-		if (expr_type == TYPE_INT || expr_type == TYPE_CHAR) {
+		if (FLAGS_IS_INTEGER(expr_flags)) {
 			expr->expr_flags = type_flags;
 			return 0;
 		}
-	} else if (flags_type == TYPE_INT || flags_type == TYPE_CHAR) {
+	} else if (FLAGS_IS_INTEGER(type_flags)) {
 		/* A pointer can be cast to an integer type. */
-		if (FLAGS_ISPTR(expr_flags)) {
+		if (FLAGS_IS_PTR(expr_flags)) {
 			expr->expr_flags = type_flags;
 			return 0;
 		}
 
 		/* An integer type can be cast to another integer type. */
-		if (expr_type == TYPE_INT || expr_type == TYPE_CHAR) {
+		if (FLAGS_IS_INTEGER(expr_flags)) {
 			expr->expr_flags = type_flags;
 			return 0;
 		}
@@ -219,6 +220,178 @@ static void check_assign_type(struct ast_node *expr)
 }
 
 /*
+ * check_boolean_type:
+ * Check that the operands of a boolean operator are compatible.
+ */
+static void check_boolean_type(struct ast_node *expr)
+{
+	int lhs_flags, rhs_flags;
+
+	lhs_flags = expr->left->expr_flags;
+
+	if (FLAGS_IS_INTEGER(lhs_flags) || FLAGS_IS_PTR(lhs_flags)) {
+		if (expr->right) {
+			rhs_flags = expr->right->expr_flags;
+			if (!FLAGS_IS_INTEGER(rhs_flags) &&
+			    !FLAGS_IS_PTR(rhs_flags))
+				goto err_incompatible;
+		}
+		expr->expr_flags = TYPE_INT;
+		return;
+	}
+
+err_incompatible:
+	error_incompatible_op_types(expr);
+	exit(1);
+}
+
+/*
+ * integer_type_convert:
+ * Perform type conversion in an operation between two integer types.
+ * The less precise type gets converted to the more precise type.
+ * If both types have the same precision and one of them is unsigned,
+ * then the result of the operation is unsigned.
+ */
+static unsigned int integer_type_convert(int lhs_flags, int rhs_flags)
+{
+	int lhs_type, rhs_type;
+
+	lhs_type = FLAGS_TYPE(lhs_flags);
+	rhs_type = FLAGS_TYPE(rhs_flags);
+
+	if (lhs_type == TYPE_CHAR && rhs_type == TYPE_CHAR) {
+		return TYPE_CHAR | (lhs_flags & QUAL_UNSIGNED)
+		                 | (rhs_flags & QUAL_UNSIGNED);
+	} else if (lhs_type == TYPE_INT && rhs_type == TYPE_INT) {
+		return TYPE_INT | (lhs_flags & QUAL_UNSIGNED)
+		                | (rhs_flags & QUAL_UNSIGNED);
+	} else if (lhs_type == TYPE_INT) {
+		return lhs_flags;
+	} else {
+		return rhs_flags;
+	}
+}
+
+/*
+ * check_bitop_type:
+ * Confirm that LHS and RHS of a bitwise operation are compatible.
+ */
+static void check_bitop_type(struct ast_node *expr)
+{
+	int lhs_flags, rhs_flags;
+
+	lhs_flags = expr->left->expr_flags;
+
+	if (expr->tag == EXPR_NOT) {
+		if (FLAGS_IS_PTR(lhs_flags) || !FLAGS_IS_INTEGER(lhs_flags))
+			goto err_incompatible;
+
+		expr->expr_flags = lhs_flags;
+		return;
+	}
+
+	rhs_flags = expr->right->expr_flags;
+
+	if (FLAGS_IS_PTR(lhs_flags) || FLAGS_IS_PTR(rhs_flags))
+		goto err_incompatible;
+
+	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
+		/* Bitwise operations can only be performed on integer types. */
+		expr->expr_flags = integer_type_convert(lhs_flags, rhs_flags);
+		return;
+	}
+
+err_incompatible:
+	error_incompatible_op_types(expr);
+	exit(1);
+}
+
+/*
+ * check_additive_type:
+ * Confirm that the LHS and RHS of an additive expression
+ * are compatible and set the type of the expression.
+ */
+static void check_additive_type(struct ast_node *expr)
+{
+	int lhs_flags, rhs_flags;
+
+	lhs_flags = expr->left->expr_flags;
+	rhs_flags = expr->right->expr_flags;
+
+	if (FLAGS_IS_PTR(lhs_flags) && FLAGS_IS_PTR(rhs_flags)) {
+		/*
+		 * Two pointers can be subtracted only
+		 * if they are of the same type.
+		 * The resulting expression type is int.
+		 * (Well, actually it's ptrdiff_t (signed long),
+		 * but we don't support that.)
+		 */
+		if (expr->tag == EXPR_SUB && lhs_flags == rhs_flags) {
+			expr->expr_flags = TYPE_INT;
+			return;
+		} else {
+			goto err_incompatible;
+		}
+	}
+	if (FLAGS_IS_PTR(lhs_flags)) {
+		/* An integer can be added to or subtracted from a pointer. */
+		if (FLAGS_IS_INTEGER(rhs_flags)) {
+			expr->expr_flags = lhs_flags;
+			return;
+		} else {
+			goto err_incompatible;
+		}
+	}
+	if (FLAGS_IS_PTR(rhs_flags)) {
+		/* A pointer can be added to an integer, but not subtracted. */
+		if (expr->tag == EXPR_ADD && FLAGS_IS_INTEGER(lhs_flags)) {
+			expr->expr_flags = rhs_flags;
+			return;
+		} else {
+			goto err_incompatible;
+		}
+	}
+	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
+		/* Two integer types can be added or subtracted. */
+		expr->expr_flags = integer_type_convert(lhs_flags, rhs_flags);
+		return;
+	}
+
+err_incompatible:
+	error_incompatible_op_types(expr);
+	exit(1);
+}
+
+/*
+ * check_multiplicative_type:
+ * Confirm that the LHS and RHS of a multiplicative expression
+ * are compatible and set resulting expression type.
+ */
+static void check_multiplicative_type(struct ast_node *expr)
+{
+	int lhs_flags, rhs_flags;
+
+	lhs_flags = expr->left->expr_flags;
+	rhs_flags = expr->right->expr_flags;
+
+	if (FLAGS_IS_PTR(lhs_flags) || FLAGS_IS_PTR(rhs_flags))
+		goto err_incompatible;
+
+	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
+		/*
+		 * Multiplicative operations can only
+		 * be performed on integer types.
+		 */
+		expr->expr_flags = integer_type_convert(lhs_flags, rhs_flags);
+		return;
+	}
+
+err_incompatible:
+	error_incompatible_op_types(expr);
+	exit(1);
+}
+
+/*
  * check_address_type:
  * Set the type of an address-of expression
  * by increasing the level of indirection.
@@ -226,6 +399,8 @@ static void check_assign_type(struct ast_node *expr)
 static void check_address_type(struct ast_node *expr)
 {
 	unsigned int indirection;
+
+	/* TODO: type check */
 
 	expr->expr_flags = expr->left->expr_flags;
 	indirection = (expr->expr_flags >> 24) + 1;
@@ -235,14 +410,17 @@ static void check_address_type(struct ast_node *expr)
 
 /*
  * check_dereference_type:
+ * Check whether the operand of a dereference expression can be dereferenced
+ * and decrease the exprssion's level of indirection.
  */
 static void check_dereference_type(struct ast_node *expr)
 {
-	unsigned int indirection;
+	unsigned int indirection, flags;
 
-	if (!FLAGS_ISPTR(expr->left->expr_flags)) {
-		fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-		        "cannot dereference non-pointer type\n");
+	flags = expr->left->expr_flags;
+
+	if (!FLAGS_IS_PTR(flags) || FLAGS_TYPE(flags) == TYPE_VOID) {
+		error_incompatible_op_types(expr);
 		exit(1);
 	}
 
@@ -262,10 +440,24 @@ static void check_func_type(struct ast_node *expr)
 }
 
 static void (*expr_type_func[])(struct ast_node *) = {
-	[EXPR_ASSIGN] = check_assign_type,
-	[EXPR_ADDRESS] = check_address_type,
-	[EXPR_DEREFERENCE] = check_dereference_type,
-	[EXPR_FUNC] = check_func_type
+	[EXPR_ASSIGN]           = check_assign_type,
+	[EXPR_LOGICAL_OR]       = check_boolean_type,
+	[EXPR_LOGICAL_AND]      = check_boolean_type,
+	[EXPR_OR]               = check_bitop_type,
+	[EXPR_XOR]              = check_bitop_type,
+	[EXPR_AND]              = check_bitop_type,
+	[EXPR_LSHIFT]           = check_bitop_type,
+	[EXPR_RSHIFT]           = check_bitop_type,
+	[EXPR_ADD]              = check_additive_type,
+	[EXPR_SUB]              = check_additive_type,
+	[EXPR_MULT]             = check_multiplicative_type,
+	[EXPR_DIV]              = check_multiplicative_type,
+	[EXPR_MOD]              = check_multiplicative_type,
+	[EXPR_ADDRESS]          = check_address_type,
+	[EXPR_DEREFERENCE]      = check_dereference_type,
+	[EXPR_NOT]              = check_bitop_type,
+	[EXPR_LOGICAL_NOT]      = check_boolean_type,
+	[EXPR_FUNC]             = check_func_type
 };
 
 /*
@@ -279,15 +471,12 @@ static void check_expr_type(struct ast_node *expr)
 		expr->expr_flags = expr->right->expr_flags;
 		break;
 
-	case EXPR_LOGICAL_OR:
-	case EXPR_LOGICAL_AND:
 	case EXPR_EQ:
 	case EXPR_NE:
 	case EXPR_LT:
 	case EXPR_GT:
 	case EXPR_LE:
 	case EXPR_GE:
-	case EXPR_LOGICAL_NOT:
 		expr->expr_flags = TYPE_INT;
 		break;
 
@@ -300,23 +489,23 @@ static void check_expr_type(struct ast_node *expr)
 	}
 }
 
-static void print_type(FILE *f, unsigned int flags)
+static void print_type(FILE *f, struct ast_node *expr)
 {
 	int i;
 
 	putc('[', f);
-	if (flags & QUAL_UNSIGNED)
+	if (expr->expr_flags & QUAL_UNSIGNED)
 		fprintf(f, "unsigned ");
-	if (FLAGS_TYPE(flags) == TYPE_INT)
+	if (FLAGS_TYPE(expr->expr_flags) == TYPE_INT)
 		fprintf(f, "int");
-	if (FLAGS_TYPE(flags) == TYPE_CHAR)
+	if (FLAGS_TYPE(expr->expr_flags) == TYPE_CHAR)
 		fprintf(f, "char");
-	if (FLAGS_TYPE(flags) == TYPE_VOID)
+	if (FLAGS_TYPE(expr->expr_flags) == TYPE_VOID)
 		fprintf(f, "void");
-	if (FLAGS_TYPE(flags) == TYPE_STRLIT)
-		fprintf(f, "const char[]");
+	if (FLAGS_TYPE(expr->expr_flags) == TYPE_STRLIT)
+		fprintf(f, "const char[%lu]", strlen(expr->lexeme) - 1);
 
-	i = flags >> 24;
+	i = FLAGS_INDIRECTION(expr->expr_flags);
 	if (i) {
 		fputc(' ', f);
 		while (i--)
@@ -395,7 +584,7 @@ static void print_ast_depth(FILE *f, struct ast_node *root,
 		fprintf(f, "OP: %s ", expr_names[root->tag]);
 		break;
 	}
-	print_type(f, root->expr_flags);
+	print_type(f, root);
 
 	if (f == stdout)
 		fprintf(f, "\x1B[0;37m");

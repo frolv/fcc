@@ -39,6 +39,7 @@ enum {
 	EXPR_FUNC
 };
 
+/* A single node in the abstract syntax tree. */
 struct ast_node {
 	int tag;
 	union {
@@ -59,6 +60,8 @@ void free_tree(struct ast_node *root);
 
 int ast_decl_set_type(struct ast_node *root, unsigned int type_flags);
 int ast_cast(struct ast_node *expr, unsigned int type_flags);
+
+#include <stdio.h>
 
 void print_ast(FILE *f, struct ast_node *root);
 
