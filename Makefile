@@ -15,8 +15,11 @@ PARSE_H = $(SRCDIR)/parse.h
 SCAN_SRC = $(SRCDIR)/scan.c
 SCAN_H = $(SRCDIR)/scan.h
 
-_OBJ = fcc.o ast.o symtab.o parse.o scan.o
+_OBJ = fcc.o ast.o symtab.o error.o parse.o scan.o
 OBJ = $(patsubst %,$(SRCDIR)/%,$(_OBJ))
+
+_HEAD = fcc.h ast.h symtab.h error.h
+HEAD = $(patsubst %,$(SRCDIR)/%,$(_HEAD))
 
 all: parser compiler
 
@@ -28,7 +31,7 @@ $(SCAN_SRC) $(SCAN_H): $(SRCDIR)/feeble-c.l $(PARSE_H)
 
 parser: $(PARSE_SRC) $(PARSE_H) $(SCAN_SRC)
 
-$(SRCDIR)/%.o: $(SRCDIR)/%.c
+$(SRCDIR)/%.o: $(SRCDIR)/%.c $(HEAD)
 	$(CC) $(CFLAGS) -o $@ $<
 
 compiler: $(OBJ)
