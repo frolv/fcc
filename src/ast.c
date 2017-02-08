@@ -118,13 +118,23 @@ int ast_decl_set_type(struct ast_node *root, unsigned int type_flags)
 		type_flags |= TYPE_INT;
 
 	if (root->tag == NODE_IDENTIFIER) {
-		if (root->sym->flags & 0xFF) {
+		if (FLAGS_TYPE(root->sym->flags)) {
 			/* TODO: proper error handling function */
 			fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
 			        "%s has already been declared\n",
 			        root->lexeme);
 			return 1;
 		}
+
+		/* Can't declare a variable of type void. */
+		if (FLAGS_TYPE(type_flags) == TYPE_VOID &&
+		    !FLAGS_IS_PTR(root->sym->flags)) {
+			fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
+			        "%s declared as type `void'\n",
+			        root->lexeme);
+			return 1;
+		}
+
 		root->sym->flags |= type_flags;
 		root->expr_flags = root->sym->flags;
 	} else if (root->tag == EXPR_COMMA) {
@@ -152,6 +162,12 @@ int ast_cast(struct ast_node *expr, unsigned int type_flags)
 	int expr_flags;
 
 	expr_flags = expr->expr_flags;
+
+	if (!FLAGS_TYPE(expr_flags)) {
+		fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
+		        "undeclared identifier\n");
+		exit(1);
+	}
 	if (!FLAGS_TYPE(type_flags))
 		type_flags |= TYPE_INT;
 
@@ -179,6 +195,9 @@ int ast_cast(struct ast_node *expr, unsigned int type_flags)
 			expr->expr_flags = type_flags;
 			return 0;
 		}
+	} else if (FLAGS_TYPE(type_flags) == TYPE_VOID) {
+		expr->expr_flags = type_flags;
+		return 0;
 	}
 
 	return 1;
@@ -210,13 +229,78 @@ static int char_const_val(char *lexeme)
 }
 
 /*
+ * is_lvalue:
+ * Return 1 if the the expression tree starting at `expr`
+ * represents an lvalue, or 0 otherwise.
+ */
+static int is_lvalue(struct ast_node *expr)
+{
+	return (expr->tag == NODE_IDENTIFIER && !FLAGS_IS_FUNC(expr->expr_flags))
+		|| expr->tag == EXPR_DEREFERENCE;
+}
+
+/*
  * check_assign_type:
  * Check if the LHS of an assignment statement is a valid lvalue
  * and that the RHS can be assigned to it.
  */
 static void check_assign_type(struct ast_node *expr)
 {
-	expr->expr_flags = expr->left->expr_flags;
+	unsigned int lhs_flags, rhs_flags;
+	const unsigned int void_star = TYPE_VOID | (1 << 24);
+
+	lhs_flags = expr->left->expr_flags;
+	rhs_flags = expr->right->expr_flags;
+
+	if (!is_lvalue(expr->left)) {
+		error_assign_type(expr->left);
+		exit(1);
+	}
+
+	if (!FLAGS_TYPE(lhs_flags)) {
+		error_undeclared(expr->left);
+		exit(1);
+	}
+
+	if (FLAGS_IS_PTR(lhs_flags)) {
+		if (FLAGS_IS_PTR(rhs_flags)) {
+			/*
+			 * Different non `void *` pointer types can be assigned,
+			 * to each other, but a warning should be issued.
+			 */
+			if (lhs_flags != rhs_flags &&
+			    lhs_flags != void_star &&
+			    rhs_flags != void_star)
+				warning_imcompatible_ptr_assn(expr);
+
+			expr->expr_flags = lhs_flags;
+		} else if (FLAGS_IS_INTEGER(rhs_flags)) {
+			/*
+			 * Integer types can be assigned to pointers, but
+			 * the value should be cast to indicate intent.
+			 */
+			fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
+			        "assigning integer to pointer without cast\n");
+			expr->expr_flags = lhs_flags;
+		} else if (FLAGS_TYPE(lhs_flags) == TYPE_CHAR &&
+		           FLAGS_INDIRECTION(lhs_flags) == 1 &&
+		           FLAGS_TYPE(rhs_flags) == TYPE_STRLIT) {
+			/* String literal can be assigned to `char *`. */
+			expr->expr_flags = lhs_flags;
+		} else {
+			goto err_incompatible;
+		}
+		return;
+	}
+
+	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
+		expr->expr_flags = lhs_flags;
+		return;
+	}
+
+err_incompatible:
+	error_incompatible_op_types(expr);
+	exit(1);
 }
 
 /*
@@ -225,7 +309,7 @@ static void check_assign_type(struct ast_node *expr)
  */
 static void check_boolean_type(struct ast_node *expr)
 {
-	int lhs_flags, rhs_flags;
+	unsigned int lhs_flags, rhs_flags;
 
 	lhs_flags = expr->left->expr_flags;
 
@@ -254,7 +338,7 @@ err_incompatible:
  */
 static unsigned int integer_type_convert(int lhs_flags, int rhs_flags)
 {
-	int lhs_type, rhs_type;
+	unsigned int lhs_type, rhs_type;
 
 	lhs_type = FLAGS_TYPE(lhs_flags);
 	rhs_type = FLAGS_TYPE(rhs_flags);
@@ -273,12 +357,52 @@ static unsigned int integer_type_convert(int lhs_flags, int rhs_flags)
 }
 
 /*
+ * check_equality_type:
+ * Check the types of the operands to an (in)equality operator.
+ */
+static void check_equality_type(struct ast_node *expr)
+{
+	unsigned int lhs_flags, rhs_flags;
+
+	lhs_flags = expr->left->expr_flags;
+	rhs_flags = expr->right->expr_flags;
+
+	if (FLAGS_IS_PTR(lhs_flags) && FLAGS_IS_PTR(rhs_flags)) {
+		if (lhs_flags != rhs_flags)
+			warning_imcompatible_ptr_cmp(expr);
+		expr->expr_flags = TYPE_INT;
+		return;
+	} else if (FLAGS_IS_PTR(lhs_flags)) {
+		if (!FLAGS_IS_INTEGER(rhs_flags))
+			goto err_incompatible;
+
+		warning_ptr_int_cmp(expr);
+		expr->expr_flags = TYPE_INT;
+		return;
+	} else if (FLAGS_IS_PTR(rhs_flags)) {
+		if (!FLAGS_IS_INTEGER(lhs_flags))
+			goto err_incompatible;
+
+		warning_ptr_int_cmp(expr);
+		expr->expr_flags = TYPE_INT;
+		return;
+	} else if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
+		expr->expr_flags = TYPE_INT;
+		return;
+	}
+
+err_incompatible:
+	error_incompatible_op_types(expr);
+	exit(1);
+}
+
+/*
  * check_bitop_type:
  * Confirm that LHS and RHS of a bitwise operation are compatible.
  */
 static void check_bitop_type(struct ast_node *expr)
 {
-	int lhs_flags, rhs_flags;
+	unsigned int lhs_flags, rhs_flags;
 
 	lhs_flags = expr->left->expr_flags;
 
@@ -313,7 +437,7 @@ err_incompatible:
  */
 static void check_additive_type(struct ast_node *expr)
 {
-	int lhs_flags, rhs_flags;
+	unsigned int lhs_flags, rhs_flags;
 
 	lhs_flags = expr->left->expr_flags;
 	rhs_flags = expr->right->expr_flags;
@@ -369,7 +493,7 @@ err_incompatible:
  */
 static void check_multiplicative_type(struct ast_node *expr)
 {
-	int lhs_flags, rhs_flags;
+	unsigned int lhs_flags, rhs_flags;
 
 	lhs_flags = expr->left->expr_flags;
 	rhs_flags = expr->right->expr_flags;
@@ -419,7 +543,12 @@ static void check_dereference_type(struct ast_node *expr)
 
 	flags = expr->left->expr_flags;
 
-	if (!FLAGS_IS_PTR(flags) || FLAGS_TYPE(flags) == TYPE_VOID) {
+	/*
+	 * If the operand is not a pointer type, or if it is a singly
+	 * indirect pointer to void (i.e. `void *`), it cannot be dereferenced.
+	 */
+	if (!FLAGS_IS_PTR(flags) || (FLAGS_TYPE(flags) == TYPE_VOID
+	                             && FLAGS_INDIRECTION(flags) == 1)) {
 		error_incompatible_op_types(expr);
 		exit(1);
 	}
@@ -428,6 +557,21 @@ static void check_dereference_type(struct ast_node *expr)
 	indirection = (expr->expr_flags >> 24) - 1;
 	expr->expr_flags &= 0x00FFFFFF;
 	expr->expr_flags |= indirection << 24;
+}
+
+/*
+ * check_unary_type:
+ * Check the type of the operand for a unary arithmetic operator.
+ */
+static void check_unary_type(struct ast_node *expr)
+{
+	unsigned int lhs_type = expr->left->expr_flags;
+
+	if (!FLAGS_IS_INTEGER(lhs_type) || FLAGS_IS_PTR(lhs_type)) {
+		error_incompatible_op_types(expr);
+		exit(1);
+	}
+	expr->expr_flags = lhs_type;
 }
 
 static void check_func_type(struct ast_node *expr)
@@ -446,6 +590,12 @@ static void (*expr_type_func[])(struct ast_node *) = {
 	[EXPR_OR]               = check_bitop_type,
 	[EXPR_XOR]              = check_bitop_type,
 	[EXPR_AND]              = check_bitop_type,
+	[EXPR_EQ]               = check_equality_type,
+	[EXPR_NE]               = check_equality_type,
+	[EXPR_LT]               = check_equality_type,
+	[EXPR_GT]               = check_equality_type,
+	[EXPR_LE]               = check_equality_type,
+	[EXPR_GE]               = check_equality_type,
 	[EXPR_LSHIFT]           = check_bitop_type,
 	[EXPR_RSHIFT]           = check_bitop_type,
 	[EXPR_ADD]              = check_additive_type,
@@ -455,6 +605,8 @@ static void (*expr_type_func[])(struct ast_node *) = {
 	[EXPR_MOD]              = check_multiplicative_type,
 	[EXPR_ADDRESS]          = check_address_type,
 	[EXPR_DEREFERENCE]      = check_dereference_type,
+	[EXPR_UNARY_PLUS]       = check_unary_type,
+	[EXPR_UNARY_MINUS]      = check_unary_type,
 	[EXPR_NOT]              = check_bitop_type,
 	[EXPR_LOGICAL_NOT]      = check_boolean_type,
 	[EXPR_FUNC]             = check_func_type
@@ -470,21 +622,8 @@ static void check_expr_type(struct ast_node *expr)
 	case EXPR_COMMA:
 		expr->expr_flags = expr->right->expr_flags;
 		break;
-
-	case EXPR_EQ:
-	case EXPR_NE:
-	case EXPR_LT:
-	case EXPR_GT:
-	case EXPR_LE:
-	case EXPR_GE:
-		expr->expr_flags = TYPE_INT;
-		break;
-
 	default:
-		if (expr_type_func[expr->tag])
-			expr_type_func[expr->tag](expr);
-		else
-			expr->expr_flags = 0;
+		expr_type_func[expr->tag](expr);
 		break;
 	}
 }

@@ -19,6 +19,7 @@ enum {
 
 #define FLAGS_TYPE(x) ((x) & 0xF)
 #define FLAGS_IS_PTR(x) ((x) & 0xFF000000)
+#define FLAGS_IS_FUNC(x) ((x) & PROPERTY_FUNC)
 #define FLAGS_IS_INTEGER(x) \
 	(FLAGS_TYPE(x) == TYPE_INT || FLAGS_TYPE(x) == TYPE_CHAR)
 #define FLAGS_INDIRECTION(x) ((x) >> 24)
