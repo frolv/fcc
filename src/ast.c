@@ -21,16 +21,30 @@ struct ast_node *create_node(int tag, char *lexeme)
 {
 	struct ast_node *n;
 
-	n = malloc(sizeof *n);
+	n = calloc(1, sizeof *n);
 	n->tag = tag;
 
 	switch (tag) {
 	case NODE_IDENTIFIER:
+		n->tag = NODE_IDENTIFIER;
 		n->sym = symtab_entry(lexeme);
+		if (!n->sym) {
+			error_undeclared(lexeme);
+			exit(1);
+		}
 		n->lexeme = n->sym->id;
 		n->expr_flags = n->sym->flags;
-		n->left = NULL;
-		n->right = NULL;
+		break;
+	case NODE_NEWID:
+		n->tag = NODE_IDENTIFIER;
+		n->sym = symtab_entry_scope(lexeme);
+		if (n->sym) {
+			error_declared(lexeme);
+			exit(1);
+		}
+		n->sym = symtab_add(lexeme, TYPE_INT);
+		n->lexeme = n->sym->id;
+		n->expr_flags = n->sym->flags;
 		break;
 	case NODE_CONSTANT:
 		n->sym = NULL;
@@ -45,15 +59,10 @@ struct ast_node *create_node(int tag, char *lexeme)
 		else
 			n->value = strtol(lexeme, NULL, 0);
 
-		n->left = NULL;
-		n->right = NULL;
 		break;
 	case NODE_STRLIT:
-		n->sym = NULL;
 		n->lexeme = strdup(lexeme);
 		n->expr_flags = TYPE_STRLIT;
-		n->left = NULL;
-		n->right = NULL;
 		break;
 	default:
 		break;
@@ -118,14 +127,6 @@ int ast_decl_set_type(struct ast_node *root, unsigned int type_flags)
 		type_flags |= TYPE_INT;
 
 	if (root->tag == NODE_IDENTIFIER) {
-		if (FLAGS_TYPE(root->sym->flags)) {
-			/* TODO: proper error handling function */
-			fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-			        "%s has already been declared\n",
-			        root->lexeme);
-			return 1;
-		}
-
 		/* Can't declare a variable of type void. */
 		if (FLAGS_TYPE(type_flags) == TYPE_VOID &&
 		    !FLAGS_IS_PTR(root->sym->flags)) {
@@ -135,7 +136,7 @@ int ast_decl_set_type(struct ast_node *root, unsigned int type_flags)
 			return 1;
 		}
 
-		root->sym->flags |= type_flags;
+		root->sym->flags = (root->sym->flags & 0xFF000000) | type_flags;
 		root->expr_flags = root->sym->flags;
 	} else if (root->tag == EXPR_COMMA) {
 		root->expr_flags = type_flags;
@@ -163,11 +164,6 @@ int ast_cast(struct ast_node *expr, unsigned int type_flags)
 
 	expr_flags = expr->expr_flags;
 
-	if (!FLAGS_TYPE(expr_flags)) {
-		fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-		        "undeclared identifier\n");
-		exit(1);
-	}
 	if (!FLAGS_TYPE(type_flags))
 		type_flags |= TYPE_INT;
 
@@ -254,11 +250,6 @@ static void check_assign_type(struct ast_node *expr)
 
 	if (!is_lvalue(expr->left)) {
 		error_assign_type(expr->left);
-		exit(1);
-	}
-
-	if (!FLAGS_TYPE(lhs_flags)) {
-		error_undeclared(expr->left);
 		exit(1);
 	}
 

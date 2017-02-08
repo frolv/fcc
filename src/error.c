@@ -115,11 +115,16 @@ void error_assign_type(struct ast_node *expr)
 	(void)expr;
 }
 
-void error_undeclared(struct ast_node *expr)
+void error_undeclared(char *id)
 {
 	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-	        "undeclared identifier: \x1B[1;35m%s\x1B[0;37m\n",
-	        expr->lexeme);
+		"undeclared identifier `%s'\n", id);
+}
+
+void error_declared(char *id)
+{
+	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
+		"`%s' has already been declared in this scope\n", id);
 }
 
 void warning_imcompatible_ptr_assn(struct ast_node *expr)
