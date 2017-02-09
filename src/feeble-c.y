@@ -6,6 +6,7 @@
 %{
 #include <stdio.h>
 
+#include "asg.h"
 #include "ast.h"
 #include "fcc.h"
 #include "parse.h"
@@ -29,6 +30,7 @@ typedef void * yyscan_t;
 %union {
 	unsigned int value;
 	struct ast_node *node;
+	struct graph_node *graph;
 }
 
 /* Make the parser reentrant instead of using global variables. */
@@ -43,7 +45,7 @@ typedef void * yyscan_t;
 %token TOKEN_AND TOKEN_OR TOKEN_EQ TOKEN_NEQ TOKEN_GE TOKEN_LE
 %token TOKEN_LSHIFT TOKEN_RSHIFT TOKEN_INC TOKEN_DEC TOKEN_PTR
 
-%start block_item_list
+%start translation_unit
 
 %type <value> type_specifier
 %type <value> type_specifiers
@@ -73,6 +75,15 @@ typedef void * yyscan_t;
 %type <node> expression
 %type <node> argument_list
 
+%type <graph> function_def
+%type <graph> statement_block
+%type <graph> block_item
+%type <graph> block_item_list
+%type <graph> declaration
+%type <graph> statement
+%type <graph> expression_statement
+%type <graph> conditional_statement
+
 %%
 
 translation_unit
@@ -90,7 +101,9 @@ extern_decl
 	;
 
 function_def
-	: type_specifiers declarator statement_block
+	: type_specifiers declarator statement_block {
+		print_asg($3);
+	}
 	;
 
 type_specifiers
@@ -142,14 +155,14 @@ parameter_declaration
 	;
 
 statement_block
-	: '{' '}'
+	: '{' '}' { $$ = NULL; }
 	| '{' { symtab_new_scope(); } block_item_list
-	  { symtab_destroy_scope(); } '}'
+	  { symtab_destroy_scope(); } '}' { $$ = $3; }
 	;
 
 block_item_list
 	: block_item
-	| block_item_list block_item
+	| block_item_list block_item { $$ = asg_append($1, $2); }
 	;
 
 block_item
@@ -166,20 +179,23 @@ statement
 	;
 
 expression_statement
-	: ';'
-	| expr ';' { print_ast(stdout, $1); free_tree($1); }
+	: ';' { $$ = NULL; }
+	| expr ';' { $$ = create_statement($1); }
 	;
 
 conditional_statement
-	: TOKEN_IF '(' expr ')' statement TOKEN_ELSE statement
-	| TOKEN_IF '(' expr ')' statement
+	: TOKEN_IF '(' expr ')' statement TOKEN_ELSE statement {
+		$$ = create_conditional($3, $5, $7);
+	}
+	| TOKEN_IF '(' expr ')' statement {
+		$$ = create_conditional($3, $5, NULL);
+	}
 	;
 
 iteration_statement
 	: TOKEN_WHILE '(' expr ')' statement
 	| TOKEN_DO statement TOKEN_WHILE '(' expr ')' ';'
 	| TOKEN_FOR '(' declaration expression_statement expr ')' statement
-	/* e.g. for (; cond; expr) ... */
 	| TOKEN_FOR '(' expression_statement expression_statement expr ')' statement
 	;
 
@@ -196,8 +212,7 @@ declaration
 			free_tree($2);
 			exit(1);
 		}
-		print_ast(stdout, $2);
-		free_tree($2);
+		$$ = create_statement($2);
 	}
 	;
 
