@@ -83,6 +83,7 @@ typedef void * yyscan_t;
 %type <graph> statement
 %type <graph> expression_statement
 %type <graph> conditional_statement
+%type <graph> iteration_statement
 
 %%
 
@@ -193,10 +194,18 @@ conditional_statement
 	;
 
 iteration_statement
-	: TOKEN_WHILE '(' expr ')' statement
-	| TOKEN_DO statement TOKEN_WHILE '(' expr ')' ';'
-	| TOKEN_FOR '(' declaration expression_statement expr ')' statement
-	| TOKEN_FOR '(' expression_statement expression_statement expr ')' statement
+	: TOKEN_WHILE '(' expr ')' statement {
+		$$ = create_while_loop(ASG_NODE_WHILE, $3, $5);
+	}
+	| TOKEN_DO statement TOKEN_WHILE '(' expr ')' ';' {
+		$$ = create_while_loop(ASG_NODE_DO_WHILE, $5, $2);
+	}
+	/* | TOKEN_FOR '(' declaration expression_statement expr ')' statement */
+	| TOKEN_FOR '(' expression_statement expression_statement expr ')' statement {
+		$$ = create_for_loop(((struct asg_node_statement *)$3)->ast,
+		                     ((struct asg_node_statement *)$4)->ast,
+		                     $5, $7);
+	}
 	;
 
 jump_statement
