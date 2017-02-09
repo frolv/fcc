@@ -176,7 +176,7 @@ statement
 	| expression_statement
 	| conditional_statement
 	| iteration_statement
-	| jump_statement
+	/* | jump_statement */
 	;
 
 expression_statement
@@ -208,12 +208,12 @@ iteration_statement
 	}
 	;
 
-jump_statement
-	: TOKEN_CONTINUE ';'
-	| TOKEN_BREAK ';'
-	| TOKEN_RETURN ';'
-	| TOKEN_RETURN expr ';'
-	;
+/* jump_statement */
+/* 	: TOKEN_CONTINUE ';' */
+/* 	| TOKEN_BREAK ';' */
+/* 	| TOKEN_RETURN ';' */
+/* 	| TOKEN_RETURN expr ';' */
+/* 	; */
 
 declaration
 	: declaration_specifiers declarator_list ';' {
@@ -361,11 +361,11 @@ cast_expr
 
 unary_expr
 	: postfix_expr
-	| TOKEN_INC unary_expr
-	| TOKEN_DEC unary_expr
+	/* | TOKEN_INC unary_expr */
+	/* | TOKEN_DEC unary_expr */
 	| unary_op cast_expr { $$ = create_expr($1, $2, NULL); }
-	| TOKEN_SIZEOF unary_expr
-	| TOKEN_SIZEOF '(' type_specifiers ')'
+	/* | TOKEN_SIZEOF unary_expr */
+	/* | TOKEN_SIZEOF '(' type_specifiers ')' */
 	;
 
 postfix_expr
