@@ -32,7 +32,7 @@ struct ast_node *create_node(int tag, char *lexeme)
 			error_undeclared(lexeme);
 			exit(1);
 		}
-		n->lexeme = n->sym->id;
+		n->lexeme = strdup(n->sym->id);
 		n->expr_flags = n->sym->flags;
 		break;
 	case NODE_NEWID:
@@ -43,7 +43,7 @@ struct ast_node *create_node(int tag, char *lexeme)
 			exit(1);
 		}
 		n->sym = symtab_add(lexeme, TYPE_INT);
-		n->lexeme = n->sym->id;
+		n->lexeme = strdup(n->sym->id);
 		n->expr_flags = n->sym->flags;
 		break;
 	case NODE_CONSTANT:
@@ -99,6 +99,7 @@ struct ast_node *create_expr(int expr, struct ast_node *lhs, struct ast_node *rh
 void free_tree(struct ast_node *root)
 {
 	switch (root->tag) {
+	case NODE_IDENTIFIER:
 	case NODE_STRLIT:
 		free(root->lexeme);
 		break;
