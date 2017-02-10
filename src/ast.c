@@ -271,8 +271,7 @@ static void check_assign_type(struct ast_node *expr)
 			 * Integer types can be assigned to pointers, but
 			 * the value should be cast to indicate intent.
 			 */
-			fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
-			        "assigning integer to pointer without cast\n");
+			warning_int_assign(expr);
 			expr->expr_flags = lhs_flags;
 		} else if (FLAGS_TYPE(lhs_flags) == TYPE_CHAR &&
 		           FLAGS_INDIRECTION(lhs_flags) == 1 &&

@@ -15,5 +15,6 @@ void error_declared(char *id);
 void warning_imcompatible_ptr_assn(struct ast_node *expr);
 void warning_imcompatible_ptr_cmp(struct ast_node *expr);
 void warning_ptr_int_cmp(struct ast_node *expr);
+void warning_int_assign(struct ast_node *expr);
 
 #endif /* FCC_ERROR_H */

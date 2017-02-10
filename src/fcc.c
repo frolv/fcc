@@ -10,11 +10,11 @@
 #include "symtab.h"
 
 char *fcc_filename;
+yyscan_t fcc_scanner;
 
 int main(int argc, char **argv)
 {
 	FILE *f;
-	yyscan_t scanner;
 
 	if (argc != 2) {
 		fprintf(stderr, "usage: %s FILE\n", argv[0]);
@@ -29,13 +29,13 @@ int main(int argc, char **argv)
 	}
 
 	fcc_filename = f == stdin ? "<stdin>" : argv[1];
-	yylex_init(&scanner);
-	yyset_in(f, scanner);
+	yylex_init(&fcc_scanner);
+	yyset_in(f, fcc_scanner);
 
 	symtab_init();
-	yyparse(scanner);
+	yyparse(fcc_scanner);
 
-	yylex_destroy(scanner);
+	yylex_destroy(fcc_scanner);
 
 	return 0;
 }

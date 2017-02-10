@@ -6,8 +6,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "parse.h"
+#include "scan.h"
+
+#include "fcc.h"
 #include "error.h"
 #include "symtab.h"
+
+/*
+ * This file contains ugly code. Turn around now.
+ */
 
 static inline int op_binary(int expr_tag)
 {
@@ -65,6 +73,10 @@ static char *op_sym[] = {
 	[EXPR_LOGICAL_NOT]      = "!"
 };
 
+/*
+ * You have been warned...
+ */
+
 static void err_print_type(struct ast_node *expr)
 {
 	int i;
@@ -89,15 +101,22 @@ static void err_print_type(struct ast_node *expr)
 	}
 }
 
+#define PUTERR(fmt, ...) \
+	fprintf(stderr, "\x1B[1;37m%s: line %u:\x1B[1;31m error:\x1B[0;37m " \
+		fmt, fcc_filename, yyget_lineno(fcc_scanner), ##__VA_ARGS__)
+
+#define PUTWARN(fmt, ...) \
+	fprintf(stderr, "\x1B[1;37m%s: line %u:\x1B[1;35m warning:\x1B[0;37m " \
+		fmt, fcc_filename, yyget_lineno(fcc_scanner), ##__VA_ARGS__)
+
 void error_incompatible_op_types(struct ast_node *expr)
 {
 	int binop;
 
 	binop = op_binary(expr->tag);
 
-	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-	        "incompatible type%s for %s %s operator: `\x1B[1;35m",
-	        binop ? "s" : "", binop ? "binary" : "unary", op_sym[expr->tag]);
+	PUTERR("incompatible type%s for %s %s operator: `\x1B[1;35m",
+	       binop ? "s" : "", binop ? "binary" : "unary", op_sym[expr->tag]);
 
 	err_print_type(expr->left);
 	if (binop) {
@@ -109,28 +128,24 @@ void error_incompatible_op_types(struct ast_node *expr)
 
 void error_assign_type(struct ast_node *expr)
 {
-	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-	        "cannot assign to non-lvalue expression\n");
+	PUTERR("cannot assign to non-lvalue expression\n");
 	/* may do something with this later */
 	(void)expr;
 }
 
 void error_undeclared(char *id)
 {
-	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-		"undeclared identifier `%s'\n", id);
+	PUTERR("undeclared identifier `%s'\n", id);
 }
 
 void error_declared(char *id)
 {
-	fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
-		"`%s' has already been declared in this scope\n", id);
+	PUTERR("`%s' has already been declared in this scope\n", id);
 }
 
 void warning_imcompatible_ptr_assn(struct ast_node *expr)
 {
-	fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
-	        "assignment from incompatible pointer type: `\x1B[1;35m");
+	PUTWARN("assignment from incompatible pointer type: `\x1B[1;35m");
 	err_print_type(expr->right);
 	fprintf(stderr, "\x1B[0;37m' => `\x1B[1;35m");
 	err_print_type(expr->left);
@@ -139,8 +154,7 @@ void warning_imcompatible_ptr_assn(struct ast_node *expr)
 
 void warning_imcompatible_ptr_cmp(struct ast_node *expr)
 {
-	fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
-	        "comparison between incompatible pointer types: `\x1B[1;35m");
+	PUTWARN("comparison between incompatible pointer types: `\x1B[1;35m");
 	err_print_type(expr->left);
 	fprintf(stderr, "\x1B[0;37m' and `\x1B[1;35m");
 	err_print_type(expr->right);
@@ -149,7 +163,12 @@ void warning_imcompatible_ptr_cmp(struct ast_node *expr)
 
 void warning_ptr_int_cmp(struct ast_node *expr)
 {
-	fprintf(stderr, "\x1B[1;35mwarning:\x1B[0;37m "
-	        "comparison between integer and pointer without cast\n");
+	PUTWARN("comparison between integer and pointer without cast\n");
+	(void)expr;
+}
+
+void warning_int_assign(struct ast_node *expr)
+{
+	PUTWARN("assigning integer to pointer without cast\n");
 	(void)expr;
 }
