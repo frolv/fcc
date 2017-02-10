@@ -77,6 +77,7 @@ typedef void * yyscan_t;
 
 %type <graph> function_def
 %type <graph> statement_block
+%type <graph> statement_block_noscope
 %type <graph> block_item
 %type <graph> block_item_list
 %type <graph> declaration
@@ -102,8 +103,15 @@ extern_decl
 	;
 
 function_def
-	: type_specifiers declarator statement_block {
-		print_asg($3);
+	: type_specifiers { symtab_new_scope(); } declarator statement_block_noscope {
+		/* Functions don't actually do anything yet but... */
+		printf("\x1B[1;31mFUNCTION: %s\x1B[0;37m\n"
+		       "\x1B[1;31m================================\x1B[0;37m\n\n",
+		       $3->lexeme);
+
+		symtab_destroy_scope();
+		print_asg($4);
+		/* free_asg($3); */
 	}
 	;
 
@@ -151,7 +159,12 @@ parameter_list
 	;
 
 parameter_declaration
-	: type_specifiers declarator
+	: type_specifiers declarator {
+		if (ast_decl_set_type($2, $1) != 0) {
+			free_tree($2);
+			exit(1);
+		}
+	}
 	| type_specifiers
 	;
 
@@ -159,6 +172,11 @@ statement_block
 	: '{' '}' { $$ = NULL; }
 	| '{' { symtab_new_scope(); } block_item_list
 	  { symtab_destroy_scope(); } '}' { $$ = $3; }
+	;
+
+statement_block_noscope
+	: '{' '}' { $$ = NULL; }
+	| '{' block_item_list '}' { $$ = $2; }
 	;
 
 block_item_list
