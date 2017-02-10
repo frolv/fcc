@@ -3,7 +3,7 @@ LEX = flex
 YACC = bison
 RM = rm -f
 
-CFLAGS = -Wall -Wextra -c
+CFLAGS = -Wall -Wextra -c -O2
 LDFLAGS = -lfl
 
 PROGRAM = fcc
