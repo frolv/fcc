@@ -1,12 +1,14 @@
 /* Feeble C lex specification */
 
-%option noyywrap
 %option reentrant bison-bridge
 %option yylineno
 
 %{
 #include "fcc.h"
 #include "parse.h"
+
+#define YY_NO_INPUT
+#define YY_NO_UNPUT
 %}
 
 nonzero_digit   [1-9]
