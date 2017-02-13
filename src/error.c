@@ -179,3 +179,9 @@ void warning_int_assign(struct ast_node *expr)
 	PUTWARN("assigning integer to pointer without cast\n");
 	(void)expr;
 }
+
+void warning_unreachable(struct graph_node *statement)
+{
+	PUTWARN("unreachable code\n");
+	(void)statement;
+}
