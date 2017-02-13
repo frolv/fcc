@@ -18,6 +18,7 @@ void warning_imcompatible_ptr_assn(struct ast_node *expr);
 void warning_imcompatible_ptr_cmp(struct ast_node *expr);
 void warning_ptr_int_cmp(struct ast_node *expr);
 void warning_int_assign(struct ast_node *expr);
+void warning_ptr_assign(struct ast_node *expr);
 void warning_unreachable(struct graph_node *statement);
 
 #endif /* FCC_ERROR_H */

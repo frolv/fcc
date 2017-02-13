@@ -282,6 +282,12 @@ static void check_assign_type(struct ast_node *expr)
 			goto err_incompatible;
 		}
 		return;
+	} else if (FLAGS_IS_PTR(rhs_flags)) {
+		if (!FLAGS_IS_INTEGER(lhs_flags))
+			goto err_incompatible;
+
+		warning_ptr_assign(expr);
+		expr->expr_flags = lhs_flags;
 	}
 
 	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
@@ -570,11 +576,7 @@ static void check_unary_type(struct ast_node *expr)
 
 static void check_func_type(struct ast_node *expr)
 {
-	/*
-	 * If a function does not exist in the symbol table,
-	 * its return type is assumed to be int.
-	 */
-	expr->expr_flags = TYPE_INT;
+	expr->expr_flags = expr->left->expr_flags;
 }
 
 static void (*expr_type_func[])(struct ast_node *) = {
