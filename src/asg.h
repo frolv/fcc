@@ -12,7 +12,8 @@ enum {
 	ASG_NODE_CONDITIONAL,
 	ASG_NODE_FOR,
 	ASG_NODE_WHILE,
-	ASG_NODE_DO_WHILE
+	ASG_NODE_DO_WHILE,
+	ASG_NODE_RETURN
 };
 
 struct graph_node {
@@ -50,6 +51,12 @@ struct asg_node_while {
 	struct graph_node *body;
 };
 
+struct asg_node_return {
+	int type;
+	struct graph_node *next;
+	struct ast_node *retval;
+};
+
 struct graph_node *create_statement(struct ast_node *ast);
 struct graph_node *create_conditional(struct ast_node *cond,
                                       struct graph_node *success,
@@ -61,6 +68,7 @@ struct graph_node *create_for_loop(struct ast_node *init,
 struct graph_node *create_while_loop(int while_type,
                                      struct ast_node *cond,
                                      struct graph_node *body);
+struct graph_node *create_return(struct ast_node *retval);
 
 struct graph_node *asg_append(struct graph_node *head, struct graph_node *n);
 

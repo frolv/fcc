@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "asg.h"
+#include "error.h"
 
 /*
  * create_statement:
@@ -69,6 +70,11 @@ struct graph_node *create_for_loop(struct ast_node *init,
 	return (struct graph_node *)f;
 }
 
+/*
+ * create_while_loop:
+ * Create a graph node representing a (do-)?while loop,
+ * with condition `cond` and loop body `body`.
+ */
 struct graph_node *create_while_loop(int while_type,
                                      struct ast_node *cond,
                                      struct graph_node *body)
@@ -88,6 +94,23 @@ struct graph_node *create_while_loop(int while_type,
 }
 
 /*
+ * create_return:
+ * Create a graph node representing a return statement,
+ * with an optional return value specifed by `retval`.
+ */
+struct graph_node *create_return(struct ast_node *retval)
+{
+	struct asg_node_return *r;
+
+	r = malloc(sizeof *r);
+	r->type = ASG_NODE_RETURN;
+	r->next = NULL;
+	r->retval = retval;
+
+	return (struct graph_node *)r;
+}
+
+/*
  * asg_append:
  * Append node `n` to the end of the ASG starting at `head`.
  * 
@@ -102,6 +125,9 @@ struct graph_node *asg_append(struct graph_node *head, struct graph_node *n)
 
 	for (curr = head; curr->next; curr = curr->next)
 		;
+
+	if (curr->type == ASG_NODE_RETURN)
+		warning_unreachable(n);
 
 	curr->next = n;
 	return head;
@@ -128,7 +154,7 @@ static void print_asg_conditional(struct graph_node *g)
 		printf("\x1B[1;32m==============ELSE==============\x1B[0;37m\n");
 		print_asg(c->fail);
 	}
-	printf("\x1B[1;32m=============END IF=============\x1B[0;37m\n\n");
+	printf("\x1B[1;32m=============ENDIF==============\x1B[0;37m\n\n");
 }
 
 static void print_asg_for_loop(struct graph_node *g)
@@ -168,12 +194,21 @@ static void print_asg_do_while_loop(struct graph_node *g)
 	printf("\x1B[1;32m============ENDDOWHILE==========\x1B[0;37m\n\n");
 }
 
+static void print_asg_return(struct graph_node *g)
+{
+	struct asg_node_return *r = (struct asg_node_return *)g;
+	printf("\x1B[1;32m=============RETURN=============\x1B[0;37m\n");
+	if (r->retval)
+		print_ast(stdout, r->retval);
+}
+
 static void (*print_asg_node[])(struct graph_node *) = {
 	[ASG_NODE_STATEMENT] = print_asg_statement,
 	[ASG_NODE_CONDITIONAL] = print_asg_conditional,
 	[ASG_NODE_FOR] = print_asg_for_loop,
 	[ASG_NODE_WHILE] = print_asg_while_loop,
-	[ASG_NODE_DO_WHILE] = print_asg_do_while_loop
+	[ASG_NODE_DO_WHILE] = print_asg_do_while_loop,
+	[ASG_NODE_RETURN] = print_asg_return
 };
 
 void print_asg(struct graph_node *graph)
