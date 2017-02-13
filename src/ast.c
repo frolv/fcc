@@ -515,7 +515,10 @@ static void check_address_type(struct ast_node *expr)
 {
 	unsigned int indirection;
 
-	/* TODO: type check */
+	if (!is_lvalue(expr->left)) {
+		error_address_type(expr);
+		exit(1);
+	}
 
 	expr->expr_flags = expr->left->expr_flags;
 	indirection = (expr->expr_flags >> 24) + 1;

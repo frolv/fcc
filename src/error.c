@@ -133,6 +133,13 @@ void error_assign_type(struct ast_node *expr)
 	(void)expr;
 }
 
+void error_address_type(struct ast_node *expr)
+{
+	PUTERR("cannot take address of non-lvalue expression\n");
+	/* may do something with this later */
+	(void)expr;
+}
+
 void error_undeclared(char *id)
 {
 	PUTERR("undeclared identifier `%s'\n", id);
