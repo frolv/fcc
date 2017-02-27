@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "ast.h"
 #include "symtab.h"
 
 static struct symbol **symtab_stack;
@@ -54,9 +55,33 @@ struct symbol *symtab_add(char *id, unsigned int flags)
 		s = malloc(sizeof *s);
 		s->id = strdup(id);
 		s->flags = flags;
+		s->extra = NULL;
 
 		HASH_ADD_KEYPTR(hh, symtab_stack[ntables - 1],
 		                s->id, strlen(s->id), s);
+	}
+	return s;
+}
+
+static void create_param_array(struct symbol *s, struct ast_node *params);
+
+/*
+ * symtab_add_func:
+ * Add a symbol for a function to the symbol table.
+ * Params is the AST specifiying the function's parameter declarations.
+ */
+struct symbol *symtab_add_func(char *id, unsigned int flags, void *params)
+{
+	struct symbol *s;
+
+	HASH_FIND_STR(symtab_stack[0], id, s);
+	if (!s) {
+		s = malloc(sizeof *s);
+		s->id = strdup(id);
+		s->flags = flags | PROPERTY_FUNC;
+		create_param_array(s, params);
+
+		HASH_ADD_KEYPTR(hh, symtab_stack[0], s->id, strlen(s->id), s);
 	}
 	return s;
 }
@@ -96,4 +121,10 @@ void symtab_destroy_scope(void)
 		free(s->id);
 		free(s);
 	}
+}
+
+static void create_param_array(struct symbol *s, struct ast_node *params)
+{
+	s->extra = NULL;
+	(void)params;
 }
