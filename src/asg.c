@@ -9,6 +9,22 @@
 #include "error.h"
 
 /*
+ * create_declaration:
+ * Create a graph node representing a declaration of variable(s).
+ */
+struct graph_node *create_declaration(struct ast_node *ast)
+{
+	struct asg_node_statement *s;
+
+	s = malloc(sizeof *s);
+	s->type = ASG_NODE_DECLARATION;
+	s->next = NULL;
+	s->ast = ast;
+
+	return (struct graph_node *)s;
+}
+
+/*
  * create_statement:
  * Create a graph node representing a single, linearly executed statement.
  */
@@ -113,7 +129,7 @@ struct graph_node *create_return(struct ast_node *retval)
 /*
  * asg_append:
  * Append node `n` to the end of the ASG starting at `head`.
- * 
+ *
  * TODO: this is pretty inefficient - perhaps store ASGs differently.
  */
 struct graph_node *asg_append(struct graph_node *head, struct graph_node *n)
@@ -203,6 +219,7 @@ static void print_asg_return(struct graph_node *g)
 }
 
 static void (*print_asg_node[])(struct graph_node *) = {
+	[ASG_NODE_DECLARATION] = print_asg_statement,
 	[ASG_NODE_STATEMENT] = print_asg_statement,
 	[ASG_NODE_CONDITIONAL] = print_asg_conditional,
 	[ASG_NODE_FOR] = print_asg_for_loop,

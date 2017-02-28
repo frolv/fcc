@@ -9,13 +9,14 @@
 #include "asg.h"
 #include "ast.h"
 #include "fcc.h"
+#include "gen.h"
 #include "parse.h"
 #include "scan.h"
 #include "symtab.h"
 
 void yyerror(yyscan_t scanner, char *err)
 {
-	fprintf(stderr, "\x1B[1;37m%s: line %d:\x1B[0;37m %s\n",
+	fprintf(stderr, "\x1B[1;37m%s: line %d: \x1B[1;31merror:\x1B[0;37m %s\n",
 	        fcc_filename, yyget_lineno(scanner), err);
 }
 %}
@@ -85,6 +86,7 @@ typedef void * yyscan_t;
 %type <graph> expression_statement
 %type <graph> conditional_statement
 %type <graph> iteration_statement
+%type <graph> jump_statement
 
 %%
 
@@ -103,15 +105,13 @@ extern_decl
 	;
 
 function_def
-	: type_specifiers { symtab_new_scope(); } declarator statement_block_noscope {
-		/* Functions don't actually do anything yet but... */
-		printf("\x1B[1;31mFUNCTION: %s\x1B[0;37m\n"
-		       "\x1B[1;31m================================\x1B[0;37m\n\n",
-		       $3->lexeme);
-
+	: type_specifiers { symtab_new_scope(); } declarator
+	{ symtab_add_func($3->lexeme, $1, $3->left); }
+	statement_block_noscope {
+		translate_function($3->lexeme, $5);
+		/* print_asg($5); */
+		/* free_asg($5); */
 		symtab_destroy_scope();
-		print_asg($4);
-		/* free_asg($3); */
 	}
 	;
 
@@ -194,7 +194,7 @@ statement
 	| expression_statement
 	| conditional_statement
 	| iteration_statement
-	/* | jump_statement */
+	| jump_statement
 	;
 
 expression_statement
@@ -226,11 +226,11 @@ iteration_statement
 	}
 	;
 
-/* jump_statement */
+jump_statement
 /* 	: TOKEN_CONTINUE ';' */
 /* 	| TOKEN_BREAK ';' */
-/* 	| TOKEN_RETURN ';' */
-/* 	| TOKEN_RETURN expr ';' */
+	: TOKEN_RETURN ';' { $$ = create_return(NULL); }
+	| TOKEN_RETURN expr ';' { $$ = create_return($2); }
 /* 	; */
 
 declaration
@@ -239,7 +239,7 @@ declaration
 			free_tree($2);
 			exit(1);
 		}
-		$$ = create_statement($2);
+		$$ = create_declaration($2);
 	}
 	;
 

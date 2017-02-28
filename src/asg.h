@@ -8,6 +8,7 @@
 #include "ast.h"
 
 enum {
+	ASG_NODE_DECLARATION,
 	ASG_NODE_STATEMENT,
 	ASG_NODE_CONDITIONAL,
 	ASG_NODE_FOR,
@@ -57,6 +58,7 @@ struct asg_node_return {
 	struct ast_node *retval;
 };
 
+struct graph_node *create_declaration(struct ast_node *ast);
 struct graph_node *create_statement(struct ast_node *ast);
 struct graph_node *create_conditional(struct ast_node *cond,
                                       struct graph_node *success,
