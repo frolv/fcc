@@ -3,6 +3,8 @@
  * Variable type information and functions.
  */
 
+#include <stddef.h>
+
 enum {
 	TYPE_INT = 1,
 	TYPE_CHAR,
