@@ -44,8 +44,8 @@ void vector_append(struct vector *v, void *elem)
 void vector_pop(struct vector *v, void *ret)
 {
 	v->nmembs--;
-	if (elem)
-		memcpy(elem, VECTOR_INDEX(v, v->nmembs), v->size);
+	if (ret)
+		memcpy(ret, VECTOR_INDEX(v, v->nmembs), v->size);
 }
 
 /*
@@ -69,7 +69,7 @@ void vector_get(struct vector *v, size_t index, void *ret)
 	if (index >= v->nmembs)
 		return;
 
-	memcpy(elem, VECTOR_INDEX(v, index), v->size);
+	memcpy(ret, VECTOR_INDEX(v, index), v->size);
 }
 
 void vector_destroy(struct vector *v)
