@@ -191,3 +191,8 @@ void warning_unreachable(struct graph_node *statement)
 	PUTWARN("unreachable code\n");
 	(void)statement;
 }
+
+void warning_unused(const char *fname, const char *vname)
+{
+	PUTWARN("unused variable `%s' in function `%s'\n", vname, fname);
+}

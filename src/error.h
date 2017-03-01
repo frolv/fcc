@@ -20,5 +20,6 @@ void warning_ptr_int_cmp(struct ast_node *expr);
 void warning_int_assign(struct ast_node *expr);
 void warning_ptr_assign(struct ast_node *expr);
 void warning_unreachable(struct graph_node *statement);
+void warning_unused(const char *fname, const char *vname);
 
 #endif /* FCC_ERROR_H */
