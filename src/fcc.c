@@ -3,14 +3,18 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include "fcc.h"
+#include "gen.h"
 #include "parse.h"
 #include "scan.h"
 #include "symtab.h"
 
 char *fcc_filename;
 yyscan_t fcc_scanner;
+
+void output_filename(void);
 
 int main(int argc, char **argv)
 {
@@ -31,11 +35,31 @@ int main(int argc, char **argv)
 	fcc_filename = f == stdin ? "<stdin>" : argv[1];
 	yylex_init(&fcc_scanner);
 	yyset_in(f, fcc_scanner);
-
 	symtab_init();
-	yyparse(fcc_scanner);
+	begin_translation_unit();
 
+	yyparse(fcc_scanner);
+	output_filename();
+
+	free_translation_unit();
 	yylex_destroy(fcc_scanner);
 
 	return 0;
+}
+
+/* temp */
+void output_filename(void)
+{
+	char *file, *dot, *s;
+
+	file = strdup(fcc_filename);
+
+	dot = strrchr(file, '.') + 1;
+	*dot = 'S';
+
+	s = strrchr(file, '/');
+	s = s ? s + 1 : file;
+
+	flush_to_file(s);
+	free(file);
 }
