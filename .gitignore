@@ -6,3 +6,4 @@ src/scan.h
 src/parse.c
 src/parse.h
 fcc
+*.S
