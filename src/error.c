@@ -11,7 +11,7 @@
 
 #include "fcc.h"
 #include "error.h"
-#include "symtab.h"
+#include "types.h"
 
 /*
  * This file contains ugly code. Turn around now.

@@ -13,6 +13,7 @@
 #include "parse.h"
 #include "scan.h"
 #include "symtab.h"
+#include "types.h"
 
 void yyerror(yyscan_t scanner, char *err)
 {

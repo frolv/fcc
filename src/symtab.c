@@ -8,6 +8,7 @@
 
 #include "ast.h"
 #include "symtab.h"
+#include "types.h"
 
 static struct symbol **symtab_stack;
 static size_t allocated_space;

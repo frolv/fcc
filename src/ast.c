@@ -10,6 +10,7 @@
 #include "ast.h"
 #include "error.h"
 #include "symtab.h"
+#include "types.h"
 
 static int char_const_val(char *lexeme);
 
