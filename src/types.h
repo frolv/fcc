@@ -3,6 +3,9 @@
  * Variable type information and functions.
  */
 
+#ifndef FCC_TYPES_H
+#define FCC_TYPES_H
+
 #include <stddef.h>
 
 enum {
@@ -32,3 +35,5 @@ enum {
 #define FLAGS_INDIRECTION(x) ((x) >> 24)
 
 size_t type_size(unsigned int type_flags);
+
+#endif /* FCC_TYPES_H */

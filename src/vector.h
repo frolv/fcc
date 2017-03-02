@@ -2,6 +2,9 @@
  * vector.h
  */
 
+#ifndef FCC_VECTOR_H
+#define FCC_VECTOR_H
+
 #include <stddef.h>
 
 struct vector {
@@ -25,3 +28,5 @@ void vector_pop(struct vector *v, void *ret);
 
 void vector_set(struct vector *v, size_t index, void *elem);
 void vector_get(struct vector *v, size_t index, void *ret);
+
+#endif /* FCC_VECTOR_H */
