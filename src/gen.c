@@ -12,6 +12,7 @@
 #include "error.h"
 #include "fcc.h"
 #include "gen.h"
+#include "ir.h"
 #include "types.h"
 #include "vector.h"
 
@@ -245,15 +246,25 @@ void translate_function(const char *fname, struct graph_node *g)
 {
 	size_t bytes;
 	struct vector locals;
+	struct ir_sequence ir;
 
-	begin_function(fname);
 	vector_init(&locals, sizeof (struct local));
+	ir_init(&ir);
 
 	bytes = read_locals(fname, &locals, g);
+
+	for (; g; g = g->next) {
+		if (g->type == ASG_NODE_STATEMENT)
+			ir_parse(&ir, ((struct asg_node_statement *)g)->ast);
+	}
+	ir_print_sequence(&ir);
+
+	ir_destroy(&ir);
+	vector_destroy(&locals);
+
+	begin_function(fname);
 	grow_stack(bytes);
 	shrink_stack(bytes);
-
-	vector_destroy(&locals);
 	end_function();
 }
 
