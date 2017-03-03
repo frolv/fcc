@@ -9,7 +9,6 @@
 
 struct vector {
 	size_t allocated;
-	size_t used;
 	size_t nmembs;
 	size_t size;
 	void   *data;
@@ -24,9 +23,9 @@ void vector_init(struct vector *v, size_t elem_size);
 void vector_destroy(struct vector *v);
 
 void vector_append(struct vector *v, void *elem);
-void vector_pop(struct vector *v, void *ret);
+int vector_pop(struct vector *v, void *ret);
 
-void vector_set(struct vector *v, size_t index, void *elem);
-void vector_get(struct vector *v, size_t index, void *ret);
+int vector_set(struct vector *v, size_t index, void *elem);
+int vector_get(struct vector *v, size_t index, void *ret);
 
 #endif /* FCC_VECTOR_H */
