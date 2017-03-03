@@ -245,16 +245,20 @@ static int is_lvalue(struct ast_node *expr)
 static void pointer_additive_scale(struct ast_node *expr)
 {
 	struct ast_node **add, *tmp;
+	unsigned int flags, ind;
 	size_t ptr_size;
 
 	if (FLAGS_IS_PTR(expr->left->expr_flags)) {
-		ptr_size = type_size(FLAGS_TYPE(expr->left->expr_flags));
+		flags = expr->left->expr_flags;
 		add = &expr->right;
 	} else {
-		ptr_size = type_size(FLAGS_TYPE(expr->right->expr_flags));
+		flags = expr->right->expr_flags;
 		add = &expr->left;
 	}
 
+	ind = FLAGS_INDIRECTION(flags) - 1;
+	flags = (flags & 0x00FFFFFF) | (ind << FLAGS_INDIRECTION_SHIFT);
+	ptr_size = type_size(flags);
 	if (ptr_size == 1)
 		return;
 
@@ -592,9 +596,9 @@ static void check_dereference_type(struct ast_node *expr)
 	}
 
 	expr->expr_flags = expr->left->expr_flags;
-	indirection = (expr->expr_flags >> 24) - 1;
+	indirection = FLAGS_INDIRECTION(expr->expr_flags) - 1;
 	expr->expr_flags &= 0x00FFFFFF;
-	expr->expr_flags |= indirection << 24;
+	expr->expr_flags |= indirection << FLAGS_INDIRECTION_SHIFT;
 }
 
 /*
