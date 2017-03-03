@@ -238,6 +238,39 @@ static int is_lvalue(struct ast_node *expr)
 }
 
 /*
+ * pointer_additive_scale:
+ * Multiply operand by sizeof *ptr when performing
+ * an additive operation on a pointer.
+ */
+static void pointer_additive_scale(struct ast_node *expr)
+{
+	struct ast_node **add, *tmp;
+	size_t ptr_size;
+
+	if (FLAGS_IS_PTR(expr->left->expr_flags)) {
+		ptr_size = type_size(FLAGS_TYPE(expr->left->expr_flags));
+		add = &expr->right;
+	} else {
+		ptr_size = type_size(FLAGS_TYPE(expr->right->expr_flags));
+		add = &expr->left;
+	}
+
+	if (ptr_size == 1)
+		return;
+
+	if ((*add)->tag == NODE_CONSTANT) {
+		(*add)->value *= ptr_size;
+	} else {
+		tmp = calloc(1, sizeof *tmp);
+		tmp->tag = NODE_CONSTANT;
+		tmp->expr_flags = TYPE_INT | QUAL_UNSIGNED;
+		tmp->value = ptr_size;
+
+		*add = create_expr(EXPR_MULT, *add, tmp);
+	}
+}
+
+/*
  * check_assign_type:
  * Check if the LHS of an assignment statement is a valid lvalue
  * and that the RHS can be assigned to it.
@@ -457,8 +490,10 @@ static void check_additive_type(struct ast_node *expr)
 	}
 	if (FLAGS_IS_PTR(lhs_flags)) {
 		/* An integer can be added to or subtracted from a pointer. */
-		if (FLAGS_IS_INTEGER(rhs_flags)) {
+		if (FLAGS_IS_INTEGER(rhs_flags) &&
+		    FLAGS_TYPE(lhs_flags) != TYPE_VOID) {
 			expr->expr_flags = lhs_flags;
+			pointer_additive_scale(expr);
 			return;
 		} else {
 			goto err_incompatible;
@@ -466,8 +501,10 @@ static void check_additive_type(struct ast_node *expr)
 	}
 	if (FLAGS_IS_PTR(rhs_flags)) {
 		/* A pointer can be added to an integer, but not subtracted. */
-		if (expr->tag == EXPR_ADD && FLAGS_IS_INTEGER(lhs_flags)) {
+		if (expr->tag == EXPR_ADD && FLAGS_IS_INTEGER(lhs_flags) &&
+		    FLAGS_TYPE(rhs_flags) != TYPE_VOID) {
 			expr->expr_flags = rhs_flags;
+			pointer_additive_scale(expr);
 			return;
 		} else {
 			goto err_incompatible;

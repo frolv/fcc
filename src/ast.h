@@ -40,6 +40,9 @@ enum {
 	EXPR_FUNC
 };
 
+#define TAG_IS_UNARY(tag) \
+	((tag) >= EXPR_ADDRESS && (tag) <= EXPR_LOGICAL_NOT)
+
 /* A single node in the abstract syntax tree. */
 struct ast_node {
 	int tag;
