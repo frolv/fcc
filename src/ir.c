@@ -22,16 +22,14 @@ void ir_destroy(struct ir_sequence *ir)
 	 || (n)->tag == NODE_IDENTIFIER \
 	 || (n)->tag == NODE_STRLIT)
 
-#define NUM_TEMP_REGS 31
-
 struct tmp_reg {
 	int next;
 	int items[NUM_TEMP_REGS];
 };
 
 static int ir_read_ast(struct ir_sequence *ir,
-                        struct ast_node *expr,
-                        struct tmp_reg *temps)
+                       struct ast_node *expr,
+                       struct tmp_reg *temps)
 {
 	struct ir_instruction inst;
 

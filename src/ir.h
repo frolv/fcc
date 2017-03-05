@@ -8,6 +8,8 @@
 #include "ast.h"
 #include "vector.h"
 
+#define NUM_TEMP_REGS 31
+
 #define IR_OPERAND_TERMINAL 0
 #define IR_OPERAND_TEMP_REG 1
 
