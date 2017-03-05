@@ -16,10 +16,11 @@ SCAN_SRC = $(SRCDIR)/scan.c
 SCAN_H = $(SRCDIR)/scan.h
 
 _OBJ = fcc.o ast.o asg.o symtab.o error.o parse.o scan.o gen.o types.o \
-       vector.o ir.o
+       vector.o ir.o x86.o local.o
 OBJ = $(patsubst %,$(SRCDIR)/%,$(_OBJ))
 
-_HEAD = fcc.h ast.h asg.h symtab.h error.h gen.h types.h vector.h ir.h
+_HEAD = fcc.h ast.h asg.h symtab.h error.h gen.h types.h vector.h ir.h x86.h \
+	local.h
 HEAD = $(patsubst %,$(SRCDIR)/%,$(_HEAD))
 
 all: parser compiler
