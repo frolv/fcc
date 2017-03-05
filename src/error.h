@@ -9,6 +9,7 @@
 #include "ast.h"
 
 void error_incompatible_op_types(struct ast_node *expr);
+void error_incompatible_uplus(struct ast_node *operand);
 void error_assign_type(struct ast_node *expr);
 void error_address_type(struct ast_node *expr);
 void error_undeclared(char *id);

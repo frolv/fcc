@@ -126,6 +126,13 @@ void error_incompatible_op_types(struct ast_node *expr)
 	fprintf(stderr, "\x1B[0;37m'\n");
 }
 
+void error_incompatible_uplus(struct ast_node *operand)
+{
+	PUTERR("incompatible type for unary + operator: `\x1B[1;35m");
+	err_print_type(operand);
+	fprintf(stderr, "\x1B[0;37m'\n");
+}
+
 void error_assign_type(struct ast_node *expr)
 {
 	PUTERR("cannot assign to non-lvalue expression\n");
