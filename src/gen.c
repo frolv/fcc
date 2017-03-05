@@ -13,8 +13,10 @@
 #include "fcc.h"
 #include "gen.h"
 #include "ir.h"
+#include "local.h"
 #include "types.h"
 #include "vector.h"
+#include "x86.h"
 
 #define SECTION_TEXT 0
 #define SECTION_DATA 1
@@ -33,38 +35,6 @@ static char *section_names[] = {
 };
 
 static struct section sections[NUM_SECTIONS];
-
-#define LFLAGS_USED 0x1
-
-/* A local variable within a function. */
-struct local {
-	char            *name;  /* variable name */
-	size_t          offset; /* offset from base pointer */
-	unsigned int    type;   /* type flags; see types.h */
-	unsigned int    flags;  /* various flags */
-};
-
-static void local_add(struct vector *locals, char *name, unsigned int type)
-{
-	struct local l;
-
-	memset(&l, 0, sizeof l);
-	l.name = name;
-	l.type = type;
-	vector_append(locals, &l);
-}
-
-static void local_mark_used(struct vector *locals, char *name)
-{
-	struct local *l;
-
-	VECTOR_ITER(locals, l) {
-		if (strcmp(l->name, name) == 0) {
-			l->flags |= LFLAGS_USED;
-			break;
-		}
-	}
-}
 
 void begin_translation_unit(void)
 {
@@ -124,7 +94,7 @@ static void end_function(void)
 	section_write(SECTION_TEXT, exit, strlen(exit));
 }
 
-static void check_usage(struct vector *locals, struct ast_node *ast)
+static void check_usage(struct local_vars *locals, struct ast_node *ast)
 {
 	if (!ast) {
 		return;
@@ -140,7 +110,7 @@ static void check_usage(struct vector *locals, struct ast_node *ast)
  * add_locals:
  * Add all local variables in declaration statement `decl` to `l`.
  */
-static void add_locals(struct vector *locals, struct ast_node *decl)
+static void add_locals(struct local_vars *locals, struct ast_node *decl)
 {
 	/* tag is guaranteed to be IDENTIFIER or COMMA */
 	if (decl->tag == NODE_IDENTIFIER) {
@@ -155,7 +125,7 @@ static void add_locals(struct vector *locals, struct ast_node *decl)
  * scan_locals:
  * Find all local variables declared in `g`, and check if they get used.
  */
-static void scan_locals(struct vector *locals, struct graph_node *g)
+static void scan_locals(struct local_vars *locals, struct graph_node *g)
 {
 	if (!g)
 		return;
@@ -191,7 +161,7 @@ static void scan_locals(struct vector *locals, struct graph_node *g)
 }
 
 static size_t read_locals(const char *fname,
-                          struct vector *locals,
+                          struct local_vars *locals,
                           struct graph_node *g)
 {
 	size_t nbytes, size;
@@ -200,7 +170,7 @@ static size_t read_locals(const char *fname,
 	scan_locals(locals, g);
 	nbytes = 0;
 
-	VECTOR_ITER(locals, l) {
+	VECTOR_ITER(&locals->locals, l) {
 		if (!(l->flags & LFLAGS_USED)) {
 			warning_unused(fname, l->name);
 			continue;
@@ -245,11 +215,13 @@ static void move_sp(size_t n, int sub)
 void translate_function(const char *fname, struct graph_node *g)
 {
 	size_t bytes;
-	struct vector locals;
+	struct local_vars locals;
 	struct ir_sequence ir;
+	struct x86_sequence x86;
 
-	vector_init(&locals, sizeof (struct local));
+	local_init(&locals);
 	ir_init(&ir);
+	x86_seq_init(&x86, &locals);
 
 	bytes = read_locals(fname, &locals, g);
 
@@ -258,9 +230,11 @@ void translate_function(const char *fname, struct graph_node *g)
 			ir_parse(&ir, ((struct asg_node_statement *)g)->ast);
 	}
 	ir_print_sequence(&ir);
+	x86_seq_translate_ir(&x86, &ir);
 
+	x86_seq_destroy(&x86);
 	ir_destroy(&ir);
-	vector_destroy(&locals);
+	local_destroy(&locals);
 
 	begin_function(fname);
 	grow_stack(bytes);
