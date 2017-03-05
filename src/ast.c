@@ -73,6 +73,7 @@ struct ast_node *create_node(int tag, char *lexeme)
 }
 
 static void check_expr_type(struct ast_node *expr);
+static int combine_constants(int op, struct ast_node *lhs, struct ast_node *rhs);
 
 /*
  * create_expr:
@@ -82,6 +83,20 @@ static void check_expr_type(struct ast_node *expr);
 struct ast_node *create_expr(int expr, struct ast_node *lhs, struct ast_node *rhs)
 {
 	struct ast_node *n;
+
+	if (expr == EXPR_UNARY_PLUS) {
+		if (!FLAGS_IS_INTEGER(lhs->expr_flags)
+		    || FLAGS_IS_PTR(lhs->expr_flags)) {
+			error_incompatible_uplus(lhs);
+			exit(1);
+		}
+		return lhs;
+	}
+
+	if (lhs->tag == NODE_CONSTANT && (!rhs || rhs->tag == NODE_CONSTANT)) {
+		if (combine_constants(expr, lhs, rhs))
+			return lhs;
+	}
 
 	n = malloc(sizeof *n);
 	n->tag = expr;
@@ -664,6 +679,85 @@ static void check_expr_type(struct ast_node *expr)
 		expr_type_func[expr->tag](expr);
 		break;
 	}
+}
+
+/*
+ * combine_constants:
+ * Perform an operation on two constant values.
+ * Store result in `lhs` and free `rhs`.
+ */
+static int combine_constants(int op, struct ast_node *lhs, struct ast_node *rhs)
+{
+	switch (op) {
+	case EXPR_LOGICAL_OR:
+		lhs->value = lhs->value || rhs->value;
+		break;
+	case EXPR_LOGICAL_AND:
+		lhs->value = lhs->value && rhs->value;
+		break;
+	case EXPR_OR:
+		lhs->value |= rhs->value;
+		break;
+	case EXPR_XOR:
+		lhs->value ^= rhs->value;
+		break;
+	case EXPR_AND:
+		lhs->value &= rhs->value;
+		break;
+	case EXPR_EQ:
+		lhs->value = lhs->value == rhs->value;
+		break;
+	case EXPR_NE:
+		lhs->value = lhs->value != rhs->value;
+		break;
+	case EXPR_LT:
+		lhs->value = lhs->value < rhs->value;
+		break;
+	case EXPR_GT:
+		lhs->value = lhs->value > rhs->value;
+		break;
+	case EXPR_LE:
+		lhs->value = lhs->value <= rhs->value;
+		break;
+	case EXPR_GE:
+		lhs->value = lhs->value >= rhs->value;
+		break;
+	case EXPR_LSHIFT:
+		lhs->value <<= rhs->value;
+		break;
+	case EXPR_RSHIFT:
+		lhs->value >>= rhs->value;
+		break;
+	case EXPR_ADD:
+		lhs->value += rhs->value;
+		break;
+	case EXPR_SUB:
+		lhs->value -= rhs->value;
+		break;
+	case EXPR_MULT:
+		lhs->value *= rhs->value;
+		break;
+	case EXPR_DIV:
+		lhs->value /= rhs->value;
+		break;
+	case EXPR_MOD:
+		lhs->value %= rhs->value;
+		break;
+	case EXPR_UNARY_MINUS:
+		lhs->value = -lhs->value;
+		break;
+	case EXPR_NOT:
+		lhs->value = ~lhs->value;
+		break;
+	case EXPR_LOGICAL_NOT:
+		lhs->value = !lhs->value;
+		break;
+	default:
+		return 0;
+	}
+
+	free(rhs);
+	return 1;
 }
 
 static void print_type(FILE *f, struct ast_node *expr)
