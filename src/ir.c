@@ -106,6 +106,10 @@ void ir_parse(struct ir_sequence *ir, struct ast_node *expr)
 	struct tmp_reg t;
 	int i;
 
+	/* Not an operation. */
+	if (expr->tag <= NODE_STRLIT)
+		return;
+
 	t.next = 0;
 	for (i = 0; i < NUM_TEMP_REGS - 1; ++i)
 		t.items[i] = i + 1;
