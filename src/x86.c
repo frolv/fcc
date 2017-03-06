@@ -10,6 +10,8 @@
 #include "types.h"
 #include "x86.h"
 
+static int curr_label = 0;
+
 void x86_seq_init(struct x86_sequence *seq, struct local_vars *locals)
 {
 	vector_init(&seq->seq, sizeof (struct x86_instruction));
@@ -20,12 +22,14 @@ void x86_seq_init(struct x86_sequence *seq, struct local_vars *locals)
 	/* -1 indicates not in use */
 	memset(seq->tmp_reg.regs, 0xFF,
 	       NUM_TEMP_REGS * sizeof *seq->tmp_reg.regs);
+	seq->label = curr_label;
 }
 
 void x86_seq_destroy(struct x86_sequence *seq)
 {
 	vector_destroy(&seq->seq);
 	free(seq->tmp_reg.regs);
+	curr_label = seq->label;
 }
 
 /*
@@ -98,7 +102,11 @@ static void ir_to_x86_operand(struct x86_sequence *seq,
 			x->offset.gpr = X86_GPR_BP;
 			break;
 		case NODE_CONSTANT:
-			x->type = X86_OPERAND_CONSTANT;
+			if (i->term->expr_flags & QUAL_UNSIGNED ||
+			    FLAGS_IS_PTR(i->term->expr_flags))
+				x->type = X86_OPERAND_UCONSTANT;
+			else
+				x->type = X86_OPERAND_CONSTANT;
 			x->constant = i->term->value;
 			break;
 		case NODE_STRLIT:
@@ -199,7 +207,8 @@ static int x86_load_tmp_reg(struct x86_sequence *seq,
  * Converts an IR assignment instruction to a series of x86 instructions.
  */
 static void translate_assign_instruction(struct x86_sequence *seq,
-                                         struct ir_instruction *i)
+                                         struct ir_instruction *i,
+                                         int cond)
 {
 	struct x86_instruction out;
 	int gpr;
@@ -232,6 +241,8 @@ static void translate_assign_instruction(struct x86_sequence *seq,
 	}
 
 	vector_append(&seq->seq, &out);
+
+	(void)cond;
 }
 
 /*
@@ -315,18 +326,34 @@ static int x86_expr_instructions[] = {
 	[EXPR_GE]       = X86_SETGE
 };
 
+static int x86_jump_instructions[] = {
+	[EXPR_LOGICAL_NOT]      = X86_JNE,
+	[EXPR_EQ]               = X86_JNE,
+	[EXPR_NE]               = X86_JE,
+	[EXPR_LT]               = X86_JGE,
+	[EXPR_GT]               = X86_JLE,
+	[EXPR_LE]               = X86_JG,
+	[EXPR_GE]               = X86_JL
+};
+
 static void translate_arithmetic_instruction(struct x86_sequence *seq,
-                                             struct ir_instruction *i)
+                                             struct ir_instruction *i,
+                                             int cond)
 {
 	return __translate_generic(seq, i, x86_expr_instructions[i->tag], 1);
+
+	(void)cond;
 }
 
 static void translate_rshift_instruction(struct x86_sequence *seq,
-                                         struct ir_instruction *i)
+                                         struct ir_instruction *i,
+                                         int cond)
 {
 	return __translate_generic(seq, i,
 	                           i->type_flags & QUAL_UNSIGNED
 	                           ? X86_SHR : X86_SAR, 1);
+
+	(void)cond;
 
 }
 
@@ -335,11 +362,15 @@ static void translate_rshift_instruction(struct x86_sequence *seq,
  * Translate a comparison instruction with value into x86 instruction.
  */
 static void translate_comparison_instruction(struct x86_sequence *seq,
-                                             struct ir_instruction *i)
+                                             struct ir_instruction *i,
+                                             int cond)
 {
 	struct x86_instruction out;
 
 	__translate_generic(seq, i, X86_CMP, 0);
+
+	if (cond)
+		return;
 
 	out.instruction = x86_expr_instructions[i->tag];
 	out.size = 0;
@@ -361,7 +392,8 @@ static void translate_comparison_instruction(struct x86_sequence *seq,
  * Translate a multiplication from IR to x86.
  */
 static void translate_multiplicative_instruction(struct x86_sequence *seq,
-                                                 struct ir_instruction *i)
+                                                 struct ir_instruction *i,
+                                                 int cond)
 {
 	struct x86_instruction out;
 	struct x86_operand *op;
@@ -419,6 +451,8 @@ static void translate_multiplicative_instruction(struct x86_sequence *seq,
 
 	vector_append(&seq->seq, &out);
 	tmp_reg_push(seq, i->target, X86_GPR_AX);
+
+	(void)cond;
 }
 
 /*
@@ -426,7 +460,8 @@ static void translate_multiplicative_instruction(struct x86_sequence *seq,
  * Translate a div or mod IR instruction to x86.
  */
 static void translate_division_instruction(struct x86_sequence *seq,
-                                           struct ir_instruction *i)
+                                           struct ir_instruction *i,
+                                           int cond)
 {
 	struct x86_instruction out;
 
@@ -452,6 +487,8 @@ static void translate_division_instruction(struct x86_sequence *seq,
 	vector_append(&seq->seq, &out);
 	tmp_reg_push(seq, i->target,
 	             i->tag == EXPR_DIV ? X86_GPR_AX : X86_GPR_DX);
+
+	(void)cond;
 }
 
 /*
@@ -459,7 +496,8 @@ static void translate_division_instruction(struct x86_sequence *seq,
  * Translate a unary arithmetic/logical IR instruction to x86.
  */
 static void translate_unary_instruction(struct x86_sequence *seq,
-                                        struct ir_instruction *i)
+                                        struct ir_instruction *i,
+                                        int cond)
 {
 	struct x86_instruction out;
 	int gpr;
@@ -479,6 +517,9 @@ static void translate_unary_instruction(struct x86_sequence *seq,
 		out.op2.type = X86_OPERAND_GPR;
 		out.op2.constant = gpr;
 		vector_append(&seq->seq, &out);
+
+		if (cond)
+			return;
 
 		out.instruction = X86_SETNE;
 		out.op1.type = X86_OPERAND_GPR;
@@ -504,7 +545,30 @@ static void translate_unary_instruction(struct x86_sequence *seq,
 	tmp_reg_push(seq, i->target, gpr);
 }
 
-static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *) = {
+static void translate_test_instruction(struct x86_sequence *seq,
+                                       struct ir_instruction *i,
+                                       int cond)
+{
+	struct x86_instruction out;
+	int gpr;
+
+	if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+		gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
+	else
+		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
+
+	out.instruction = X86_TEST;
+	out.size = 0;
+	out.op1.type = X86_OPERAND_GPR;
+	out.op1.constant = gpr;
+	out.op2.type = X86_OPERAND_GPR;
+	out.op2.gpr = gpr;
+
+	vector_append(&seq->seq, &out);
+	(void)cond;
+}
+
+static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = {
 	[EXPR_ASSIGN] = translate_assign_instruction,
 	[EXPR_LOGICAL_OR] = NULL,
 	[EXPR_LOGICAL_AND] = NULL,
@@ -529,26 +593,175 @@ static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *) = {
 	[EXPR_UNARY_MINUS] = translate_unary_instruction,
 	[EXPR_NOT] = translate_unary_instruction,
 	[EXPR_LOGICAL_NOT] = translate_unary_instruction,
-	[EXPR_FUNC] = NULL
+	[EXPR_FUNC] = NULL,
+	[IR_TEST] = translate_test_instruction
 };
 
-static void x86_write_instruction(struct x86_instruction *inst, char *out);
+/*
+ * x86_add_jump:
+ * Create a jump instruction of type `type` to jump to label ID `label`.
+ */
+static void x86_add_jump(struct x86_sequence *seq, int type, int label)
+{
+	struct x86_instruction out;
 
-void x86_seq_translate_ir(struct x86_sequence *seq, struct ir_sequence *ir)
+	out.instruction = type;
+	out.size = 0;
+	out.op1.type = X86_OPERAND_LABEL;
+	out.op1.label = label;
+
+	vector_append(&seq->seq, &out);
+}
+
+/*
+ * x86_add_label:
+ * Create an instruction represting a label with ID `label`.
+ */
+static void x86_add_label(struct x86_sequence *seq, int label)
+{
+	struct x86_instruction out;
+
+	out.instruction = X86_LABEL;
+	out.size = label;
+	vector_append(&seq->seq, &out);
+}
+
+static void x86_translate_expr(struct x86_sequence *seq,
+                               struct ir_sequence *ir,
+                               int cond)
 {
 	struct ir_instruction *i;
 
 	VECTOR_ITER(&ir->seq, i) {
 		if (tr_func[i->tag])
-			tr_func[i->tag](seq, i);
+			tr_func[i->tag](seq, i, cond);
+	}
+}
+
+void x86_translate_cond(struct x86_sequence *seq,
+                        struct ir_sequence *ir,
+                        struct asg_node_conditional *cond)
+{
+	struct ir_instruction i;
+	int jtype, jfail, jend;
+
+	jfail = seq->label++;
+	jend = cond->fail ? seq->label++ : -1;
+
+	ir_parse_expr(ir, cond->cond, 1);
+	x86_translate_expr(seq, ir, 1);
+
+	vector_pop(&ir->seq, &i);
+	jtype = i.tag == IR_TEST ? X86_JZ : x86_jump_instructions[i.tag];
+
+	x86_add_jump(seq, jtype, jfail);
+	x86_translate(seq, cond->succ);
+
+	if (cond->fail) {
+		x86_add_jump(seq, X86_JMP, jend);
+		x86_add_label(seq, jfail);
+		x86_translate(seq, cond->fail);
 	}
 
-	struct x86_instruction *x;
-	char buf[64];
-	VECTOR_ITER(&seq->seq, x) {
-		x86_write_instruction(x, buf);
-		printf("\t%s\n", buf);
+	x86_add_label(seq, cond->fail ? jend : jfail);
+}
+
+void x86_translate_for(struct x86_sequence *seq,
+                       struct ir_sequence *ir,
+                       struct asg_node_for *f)
+{
+	struct ir_instruction i;
+	int jexit, jtest, jtype;
+
+	jtest = seq->label++;
+	jexit = seq->label++;
+
+	ir_parse_expr(ir, f->init, 0);
+	x86_translate_expr(seq, ir, 0);
+	ir_clear(ir);
+
+	x86_add_label(seq, jtest);
+	ir_parse_expr(ir, f->cond, 1);
+	x86_translate_expr(seq, ir, 1);
+
+	vector_pop(&ir->seq, &i);
+	jtype = i.tag == IR_TEST ? X86_JZ : x86_jump_instructions[i.tag];
+
+	x86_add_jump(seq, jtype, jexit);
+	ir_clear(ir);
+
+	x86_translate(seq, f->body);
+
+	ir_parse_expr(ir, f->post, 0);
+	x86_translate_expr(seq, ir, 0);
+	x86_add_jump(seq, X86_JMP, jtest);
+
+	x86_add_label(seq, jexit);
+}
+
+void x86_translate_ret(struct x86_sequence *seq,
+                       struct ir_sequence *ir,
+                       struct asg_node_return *ret)
+{
+	struct x86_instruction out;
+	struct ir_instruction i;
+	struct ir_operand op;
+
+	if (ret->retval) {
+		if (ret->retval->tag <= NODE_STRLIT) {
+			/* retval is a terminal, not an expression */
+			op.op_type = IR_OPERAND_TERMINAL;
+			op.term = ret->retval;
+			x86_load_value(seq, &op, X86_GPR_AX);
+		} else {
+			ir_parse_expr(ir, ret->retval, 0);
+			x86_translate_expr(seq, ir, 0);
+
+			vector_pop(&ir->seq, &i);
+			op.op_type = IR_OPERAND_TEMP_REG;
+			op.reg = i.target;
+			x86_load_tmp_reg(seq, &op, X86_GPR_AX);
+		}
 	}
+
+	out.instruction = X86_RET;
+	out.size = 0;
+	vector_append(&seq->seq, &out);
+}
+
+/*
+ * x86_translate:
+ * Translate abstract semantic graph `g` into a sequence of x86 instruction.
+ */
+void x86_translate(struct x86_sequence *seq, struct graph_node *g)
+{
+	struct ir_sequence ir;
+
+	ir_init(&ir);
+
+	for (; g; g = g->next) {
+		ir_clear(&ir);
+
+		switch (g->type) {
+		case ASG_NODE_STATEMENT:
+			ir_parse_expr(&ir, ((struct asg_node_statement *)g)->ast,
+			              0);
+			x86_translate_expr(seq, &ir, 0);
+			break;
+		case ASG_NODE_CONDITIONAL:
+			x86_translate_cond(seq, &ir,
+			                   (struct asg_node_conditional *)g);
+			break;
+		case ASG_NODE_FOR:
+			x86_translate_for(seq, &ir, (struct asg_node_for *)g);
+			break;
+		case ASG_NODE_RETURN:
+			x86_translate_ret(seq, &ir, (struct asg_node_return *)g);
+			break;
+		}
+	}
+
+	ir_destroy(&ir);
 }
 
 static char *x86_instructions[] = {
@@ -573,9 +786,19 @@ static char *x86_instructions[] = {
 	[X86_SETL]      = "setl",
 	[X86_SETLE]     = "setle",
 	[X86_SETNE]     = "setne",
+	[X86_JMP]       = "jmp",
+	[X86_JE]        = "je",
+	[X86_JG]        = "jg",
+	[X86_JGE]       = "jge",
+	[X86_JL]        = "jl",
+	[X86_JLE]       = "jle",
+	[X86_JNE]       = "jne",
+	[X86_JZ]        = "jz",
 	[X86_MOVZB]     = "movzb",
 	[X86_CMP]       = "cmp",
-	[X86_CDQ]       = "cdq"
+	[X86_TEST]      = "test",
+	[X86_CDQ]       = "cdq",
+	[X86_RET]       = "ret"
 };
 
 static char *x86_size_suffix[] = {
@@ -612,6 +835,14 @@ static int x86_num_operands(int instruction)
 	case X86_SETL:
 	case X86_SETLE:
 	case X86_SETNE:
+	case X86_JMP:
+	case X86_JE:
+	case X86_JG:
+	case X86_JGE:
+	case X86_JL:
+	case X86_JLE:
+	case X86_JNE:
+	case X86_JZ:
 		return 1;
 	case X86_MOV:
 	case X86_ADD:
@@ -624,6 +855,7 @@ static int x86_num_operands(int instruction)
 	case X86_SAR:
 	case X86_MOVZB:
 	case X86_CMP:
+	case X86_TEST:
 		return 2;
 	case X86_IMUL:
 		return 3;
@@ -643,8 +875,11 @@ static int x86_write_operand(struct x86_operand *op, char *out)
 	case X86_OPERAND_CONSTANT:
 		n = sprintf(out, "$%d", op->constant);
 		break;
+	case X86_OPERAND_UCONSTANT:
+		n = sprintf(out, "$%u", op->constant);
+		break;
 	case X86_OPERAND_LABEL:
-		n = 0;
+		n = sprintf(out, ".L%d", op->label);
 		break;
 	case X86_OPERAND_OFFSET:
 		n = sprintf(out, "%d(%%%s)",
@@ -664,13 +899,18 @@ static int x86_write_operand(struct x86_operand *op, char *out)
  * Write a single x86 instruction to buffer `out`.
  * `out` is assumed to be at least 64 bytes long.
  */
-static void x86_write_instruction(struct x86_instruction *inst, char *out)
+void x86_write_instruction(struct x86_instruction *inst, char *out)
 {
 	int operands;
 
+	if (inst->instruction == X86_LABEL) {
+		sprintf(out, ".L%d:", inst->size);
+		return;
+	}
+
 	operands = x86_num_operands(inst->instruction);
 
-	out += sprintf(out, "%s%s",
+	out += sprintf(out, "\t%s%s",
 	               x86_instructions[inst->instruction],
 	               x86_size_suffix[inst->size]);
 
