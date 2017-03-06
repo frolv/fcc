@@ -116,11 +116,14 @@ static void ir_to_x86_operand(struct x86_sequence *seq,
  * x86_load_value:
  * Create an x86 instruction to load variable `var` into GPR `gpr`.
  */
-static void x86_load_value(struct x86_sequence *seq,
-                           struct ir_operand *val,
-                           int gpr)
+static int x86_load_value(struct x86_sequence *seq,
+                          struct ir_operand *val,
+                          int gpr)
 {
 	struct x86_instruction out;
+
+	if (gpr == X86_GPR_ANY)
+		gpr = X86_GPR_AX;
 
 	out.instruction = X86_MOV;
 	out.size = type_size(val->term->expr_flags);
@@ -129,6 +132,7 @@ static void x86_load_value(struct x86_sequence *seq,
 	out.op2.gpr = gpr;
 
 	vector_append(&seq->seq, &out);
+	return gpr;
 }
 
 /*
@@ -450,6 +454,56 @@ static void translate_division_instruction(struct x86_sequence *seq,
 	             i->tag == EXPR_DIV ? X86_GPR_AX : X86_GPR_DX);
 }
 
+/*
+ * translate_unary_instruction:
+ * Translate a unary arithmetic/logical IR instruction to x86.
+ */
+static void translate_unary_instruction(struct x86_sequence *seq,
+                                        struct ir_instruction *i)
+{
+	struct x86_instruction out;
+	int gpr;
+
+	if (i->tag == EXPR_LOGICAL_NOT) {
+		gpr = 0;
+		out.instruction = X86_CMP;
+		out.size = 0;
+
+		if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
+		else
+			gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
+
+		out.op1.type = X86_OPERAND_CONSTANT;
+		out.op1.constant = 0;
+		out.op2.type = X86_OPERAND_GPR;
+		out.op2.constant = gpr;
+		vector_append(&seq->seq, &out);
+
+		out.instruction = X86_SETNE;
+		out.op1.type = X86_OPERAND_GPR;
+		out.op1.gpr = X86_GPR_AL;
+		vector_append(&seq->seq, &out);
+
+		out.instruction = X86_MOVZB;
+		out.op2.type = X86_OPERAND_GPR;
+		out.op2.gpr = X86_GPR_AX;
+	} else {
+		if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
+		else
+			gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
+
+		out.instruction = i->tag == EXPR_NOT ? X86_NOT : X86_NEG;
+		out.size = 0;
+		out.op1.type = X86_OPERAND_GPR;
+		out.op1.gpr = gpr;
+	}
+
+	vector_append(&seq->seq, &out);
+	tmp_reg_push(seq, i->target, gpr);
+}
+
 static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *) = {
 	[EXPR_ASSIGN] = translate_assign_instruction,
 	[EXPR_LOGICAL_OR] = NULL,
@@ -472,9 +526,9 @@ static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *) = {
 	[EXPR_MOD] = translate_division_instruction,
 	[EXPR_ADDRESS] = NULL,
 	[EXPR_DEREFERENCE] = NULL,
-	[EXPR_UNARY_MINUS] = NULL,
-	[EXPR_NOT] = NULL,
-	[EXPR_LOGICAL_NOT] = NULL,
+	[EXPR_UNARY_MINUS] = translate_unary_instruction,
+	[EXPR_NOT] = translate_unary_instruction,
+	[EXPR_LOGICAL_NOT] = translate_unary_instruction,
 	[EXPR_FUNC] = NULL
 };
 
@@ -511,6 +565,8 @@ static char *x86_instructions[] = {
 	[X86_SAR]       = "sar",
 	[X86_IMUL]      = "imul",
 	[X86_DIV]       = "div",
+	[X86_NOT]       = "not",
+	[X86_NEG]       = "neg",
 	[X86_SETE]      = "sete",
 	[X86_SETG]      = "setg",
 	[X86_SETGE]     = "setge",
@@ -548,6 +604,8 @@ static int x86_num_operands(int instruction)
 	case X86_PUSH:
 	case X86_POP:
 	case X86_DIV:
+	case X86_NOT:
+	case X86_NEG:
 	case X86_SETE:
 	case X86_SETG:
 	case X86_SETGE:

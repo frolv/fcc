@@ -24,6 +24,8 @@ enum {
 	X86_SAR,
 	X86_IMUL,
 	X86_DIV,
+	X86_NOT,
+	X86_NEG,
 	X86_SETE,
 	X86_SETG,
 	X86_SETGE,
