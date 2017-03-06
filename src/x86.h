@@ -41,12 +41,14 @@ enum {
 	X86_JLE,
 	X86_JNE,
 	X86_JZ,
+	X86_JNZ,
 	X86_MOVZB,
 	X86_CMP,
 	X86_TEST,
 	X86_CDQ,
 	X86_RET,
-	X86_LABEL
+	X86_LABEL,
+	X86_NAMED_LABEL
 };
 
 enum {
@@ -87,6 +89,10 @@ struct x86_operand {
 struct x86_instruction {
 	uint16_t instruction;
 	uint16_t size;
+	union {
+		const char *lname;
+		int lnum;
+	};
 	struct x86_operand op1;
 	struct x86_operand op2;
 	struct x86_operand op3;
@@ -104,8 +110,13 @@ struct x86_sequence {
 
 void x86_seq_init(struct x86_sequence *seq, struct local_vars *locals);
 void x86_seq_destroy(struct x86_sequence *seq);
+
+void x86_begin_function(struct x86_sequence *seq, const char *fname);
+void x86_end_function(struct x86_sequence *seq);
+void x86_grow_stack(struct x86_sequence *seq, size_t bytes);
+void x86_shrink_stack(struct x86_sequence *seq, size_t bytes);
 void x86_translate(struct x86_sequence *seq, struct graph_node *g);
 
-void x86_write_instruction(struct x86_instruction *inst, char *out);
+int x86_write_instruction(struct x86_instruction *inst, char *out);
 
 #endif /* FCC_X86_H */

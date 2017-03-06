@@ -33,6 +33,79 @@ void x86_seq_destroy(struct x86_sequence *seq)
 }
 
 /*
+ * x86_begin_function:
+ * Write x86 header for function `fname`.
+ */
+void x86_begin_function(struct x86_sequence *seq, const char *fname)
+{
+	struct x86_instruction out;
+
+	out.instruction = X86_NAMED_LABEL;
+	out.size = 0;
+	out.lname = fname;
+	vector_append(&seq->seq, &out);
+
+	out.instruction = X86_PUSH;
+	out.size = 0;
+	out.op1.type = X86_OPERAND_GPR;
+	out.op1.gpr = X86_GPR_BP;
+	vector_append(&seq->seq, &out);
+}
+
+/*
+ * x86_end_function:
+ * Pop base pointer and return from function.
+ */
+void x86_end_function(struct x86_sequence *seq)
+{
+	struct x86_instruction out;
+
+	out.instruction = X86_POP;
+	out.size = 0;
+	out.op1.type = X86_OPERAND_GPR;
+	out.op1.gpr = X86_GPR_BP;
+	vector_append(&seq->seq, &out);
+
+	out.instruction = X86_RET;
+	out.size = 0;
+	vector_append(&seq->seq, &out);
+}
+
+/*
+ * x86_grow_stack:
+ * Subtract `bytes` from the stack pointer.
+ */
+void x86_grow_stack(struct x86_sequence *seq, size_t bytes)
+{
+	struct x86_instruction out;
+
+	out.instruction = X86_SUB;
+	out.size = 4;
+	out.op1.type = X86_OPERAND_CONSTANT;
+	out.op1.constant = bytes;
+	out.op2.type = X86_OPERAND_GPR;
+	out.op2.gpr = X86_GPR_SP;
+	vector_append(&seq->seq, &out);
+}
+
+/*
+ * x86_shrink_stack:
+ * Add `bytes` to the stack pointer.
+ */
+void x86_shrink_stack(struct x86_sequence *seq, size_t bytes)
+{
+	struct x86_instruction out;
+
+	out.instruction = X86_ADD;
+	out.size = 4;
+	out.op1.type = X86_OPERAND_CONSTANT;
+	out.op1.constant = bytes + (seq->tmp_reg.size << 2);
+	out.op2.type = X86_OPERAND_GPR;
+	out.op2.gpr = X86_GPR_SP;
+	vector_append(&seq->seq, &out);
+}
+
+/*
  * tmp_reg_push:
  * Create an instruction to push register `gpr` into temporary register
  * `tmp_reg`, and update temporary register offsets.
@@ -47,6 +120,7 @@ static void tmp_reg_push(struct x86_sequence *seq, int tmp_reg, int gpr)
 			seq->tmp_reg.regs[i] += 4;
 	}
 	seq->tmp_reg.regs[tmp_reg] = 0;
+	seq->tmp_reg.size++;
 
 	if (gpr != -1) {
 		out.instruction = X86_PUSH;
@@ -72,6 +146,7 @@ static void tmp_reg_pop(struct x86_sequence *seq, int tmp_reg, int gpr)
 			seq->tmp_reg.regs[i] -= 4;
 	}
 	seq->tmp_reg.regs[tmp_reg] = -1;
+	seq->tmp_reg.size--;
 
 	if (gpr != -1) {
 		out.instruction = X86_POP;
@@ -326,14 +401,26 @@ static int x86_expr_instructions[] = {
 	[EXPR_GE]       = X86_SETGE
 };
 
-static int x86_jump_instructions[] = {
+static int x86_inverse_jumps[] = {
 	[EXPR_LOGICAL_NOT]      = X86_JNE,
 	[EXPR_EQ]               = X86_JNE,
 	[EXPR_NE]               = X86_JE,
 	[EXPR_LT]               = X86_JGE,
 	[EXPR_GT]               = X86_JLE,
 	[EXPR_LE]               = X86_JG,
-	[EXPR_GE]               = X86_JL
+	[EXPR_GE]               = X86_JL,
+	[IR_TEST]               = X86_JZ
+};
+
+static int x86_jumps[] = {
+	[EXPR_LOGICAL_NOT]      = X86_JE,
+	[EXPR_EQ]               = X86_JE,
+	[EXPR_NE]               = X86_JNE,
+	[EXPR_LT]               = X86_JL,
+	[EXPR_GT]               = X86_JG,
+	[EXPR_LE]               = X86_JLE,
+	[EXPR_GE]               = X86_JGE,
+	[IR_TEST]               = X86_JNZ
 };
 
 static void translate_arithmetic_instruction(struct x86_sequence *seq,
@@ -492,6 +579,36 @@ static void translate_division_instruction(struct x86_sequence *seq,
 }
 
 /*
+ * translate_dereference_instruction:
+ * Translate a pointer dereference IR instruction to x86.
+ */
+static void translate_dereference_instruction(struct x86_sequence *seq,
+                                              struct ir_instruction *i,
+                                              int cond)
+{
+	struct x86_instruction out;
+	int gpr;
+
+	if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+		gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
+	else
+		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
+
+	out.instruction = X86_MOV;
+	out.size = type_size(i->type_flags);
+	out.op1.type = X86_OPERAND_OFFSET;
+	out.op1.offset.off = 0;
+	out.op1.offset.gpr = gpr;
+	out.op2.type = X86_OPERAND_GPR;
+	out.op2.gpr = gpr;
+
+	vector_append(&seq->seq, &out);
+	tmp_reg_push(seq, i->target, gpr);
+
+	(void)cond;
+}
+
+/*
  * translate_unary_instruction:
  * Translate a unary arithmetic/logical IR instruction to x86.
  */
@@ -545,6 +662,10 @@ static void translate_unary_instruction(struct x86_sequence *seq,
 	tmp_reg_push(seq, i->target, gpr);
 }
 
+/*
+ * translate_test_instruction:
+ * Translate an IR test instruction to x86.
+ */
 static void translate_test_instruction(struct x86_sequence *seq,
                                        struct ir_instruction *i,
                                        int cond)
@@ -589,7 +710,7 @@ static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = 
 	[EXPR_DIV] = translate_division_instruction,
 	[EXPR_MOD] = translate_division_instruction,
 	[EXPR_ADDRESS] = NULL,
-	[EXPR_DEREFERENCE] = NULL,
+	[EXPR_DEREFERENCE] = translate_dereference_instruction,
 	[EXPR_UNARY_MINUS] = translate_unary_instruction,
 	[EXPR_NOT] = translate_unary_instruction,
 	[EXPR_LOGICAL_NOT] = translate_unary_instruction,
@@ -622,10 +743,15 @@ static void x86_add_label(struct x86_sequence *seq, int label)
 	struct x86_instruction out;
 
 	out.instruction = X86_LABEL;
-	out.size = label;
+	out.size = 0;
+	out.lnum = label;
 	vector_append(&seq->seq, &out);
 }
 
+/*
+ * x86_translate_expr:
+ * Translate a single expression statement to x86.
+ */
 static void x86_translate_expr(struct x86_sequence *seq,
                                struct ir_sequence *ir,
                                int cond)
@@ -643,7 +769,7 @@ void x86_translate_cond(struct x86_sequence *seq,
                         struct asg_node_conditional *cond)
 {
 	struct ir_instruction i;
-	int jtype, jfail, jend;
+	int jfail, jend;
 
 	jfail = seq->label++;
 	jend = cond->fail ? seq->label++ : -1;
@@ -652,9 +778,7 @@ void x86_translate_cond(struct x86_sequence *seq,
 	x86_translate_expr(seq, ir, 1);
 
 	vector_pop(&ir->seq, &i);
-	jtype = i.tag == IR_TEST ? X86_JZ : x86_jump_instructions[i.tag];
-
-	x86_add_jump(seq, jtype, jfail);
+	x86_add_jump(seq, x86_inverse_jumps[i.tag], jfail);
 	x86_translate(seq, cond->succ);
 
 	if (cond->fail) {
@@ -671,7 +795,7 @@ void x86_translate_for(struct x86_sequence *seq,
                        struct asg_node_for *f)
 {
 	struct ir_instruction i;
-	int jexit, jtest, jtype;
+	int jexit, jtest;
 
 	jtest = seq->label++;
 	jexit = seq->label++;
@@ -685,9 +809,7 @@ void x86_translate_for(struct x86_sequence *seq,
 	x86_translate_expr(seq, ir, 1);
 
 	vector_pop(&ir->seq, &i);
-	jtype = i.tag == IR_TEST ? X86_JZ : x86_jump_instructions[i.tag];
-
-	x86_add_jump(seq, jtype, jexit);
+	x86_add_jump(seq, x86_inverse_jumps[i.tag], jexit);
 	ir_clear(ir);
 
 	x86_translate(seq, f->body);
@@ -699,11 +821,47 @@ void x86_translate_for(struct x86_sequence *seq,
 	x86_add_label(seq, jexit);
 }
 
+/*
+ * x86_translate_while:
+ * Translate while or do-while loop specified by `w` to x86.
+ */
+void x86_translate_while(struct x86_sequence *seq,
+                         struct ir_sequence *ir,
+                         int type,
+                         struct asg_node_while *w)
+{
+	struct ir_instruction i;
+	int jexit, jstart;
+
+	jstart = seq->label++;
+	if (type == ASG_NODE_WHILE)
+		jexit = seq->label++;
+
+	ir_parse_expr(ir, w->cond, 1);
+	vector_get(&ir->seq, ir->seq.nmembs - 1, &i);
+
+	if (type == ASG_NODE_WHILE) {
+		x86_translate_expr(seq, ir, 1);
+		x86_add_jump(seq, x86_inverse_jumps[i.tag], jexit);
+	}
+
+	x86_add_label(seq, jstart);
+	x86_translate(seq, w->body);
+	x86_translate_expr(seq, ir, 1);
+	x86_add_jump(seq, x86_jumps[i.tag], jstart);
+
+	if (type == ASG_NODE_WHILE)
+		x86_add_label(seq, jexit);
+}
+
+/*
+ * x86_translate_ret:
+ * Translate a return statement to x86.
+ */
 void x86_translate_ret(struct x86_sequence *seq,
                        struct ir_sequence *ir,
                        struct asg_node_return *ret)
 {
-	struct x86_instruction out;
 	struct ir_instruction i;
 	struct ir_operand op;
 
@@ -723,10 +881,6 @@ void x86_translate_ret(struct x86_sequence *seq,
 			x86_load_tmp_reg(seq, &op, X86_GPR_AX);
 		}
 	}
-
-	out.instruction = X86_RET;
-	out.size = 0;
-	vector_append(&seq->seq, &out);
 }
 
 /*
@@ -754,6 +908,11 @@ void x86_translate(struct x86_sequence *seq, struct graph_node *g)
 			break;
 		case ASG_NODE_FOR:
 			x86_translate_for(seq, &ir, (struct asg_node_for *)g);
+			break;
+		case ASG_NODE_WHILE:
+		case ASG_NODE_DO_WHILE:
+			x86_translate_while(seq, &ir, g->type,
+			                    (struct asg_node_while *)g);
 			break;
 		case ASG_NODE_RETURN:
 			x86_translate_ret(seq, &ir, (struct asg_node_return *)g);
@@ -794,6 +953,7 @@ static char *x86_instructions[] = {
 	[X86_JLE]       = "jle",
 	[X86_JNE]       = "jne",
 	[X86_JZ]        = "jz",
+	[X86_JNZ]       = "jnz",
 	[X86_MOVZB]     = "movzb",
 	[X86_CMP]       = "cmp",
 	[X86_TEST]      = "test",
@@ -843,6 +1003,7 @@ static int x86_num_operands(int instruction)
 	case X86_JLE:
 	case X86_JNE:
 	case X86_JZ:
+	case X86_JNZ:
 		return 1;
 	case X86_MOV:
 	case X86_ADD:
@@ -899,16 +1060,18 @@ static int x86_write_operand(struct x86_operand *op, char *out)
  * Write a single x86 instruction to buffer `out`.
  * `out` is assumed to be at least 64 bytes long.
  */
-void x86_write_instruction(struct x86_instruction *inst, char *out)
+int x86_write_instruction(struct x86_instruction *inst, char *out)
 {
 	int operands;
+	const char *start;
 
-	if (inst->instruction == X86_LABEL) {
-		sprintf(out, ".L%d:", inst->size);
-		return;
-	}
+	if (inst->instruction == X86_LABEL)
+		return sprintf(out, ".L%d:\n", inst->lnum);
+	else if (inst->instruction == X86_NAMED_LABEL)
+		return sprintf(out, "%s:\n", inst->lname);
 
 	operands = x86_num_operands(inst->instruction);
+	start = out;
 
 	out += sprintf(out, "\t%s%s",
 	               x86_instructions[inst->instruction],
@@ -922,8 +1085,11 @@ void x86_write_instruction(struct x86_instruction *inst, char *out)
 			out += x86_write_operand(&inst->op2, out);
 			if (operands == 3) {
 				out += sprintf(out, ", ");
-				x86_write_operand(&inst->op3, out);
+				out += x86_write_operand(&inst->op3, out);
 			}
 		}
 	}
+	*out++ = '\n';
+	*out = '\0';
+	return out - start;
 }

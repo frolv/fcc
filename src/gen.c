@@ -12,7 +12,6 @@
 #include "error.h"
 #include "fcc.h"
 #include "gen.h"
-#include "ir.h"
 #include "local.h"
 #include "types.h"
 #include "vector.h"
@@ -74,24 +73,8 @@ static void section_write(int section, const char *s, size_t len)
 	if (sections[section].len + len >= sections[section].size)
 		section_grow(section);
 
-	strcpy(sections[section].buf + sections[section].len, s);
+	strncpy(sections[section].buf + sections[section].len, s, len);
 	sections[section].len += len;
-}
-
-static void begin_function(const char *fname)
-{
-	char buf[0x200];
-	size_t len;
-
-	len = sprintf(buf, "\n%s:\n\tpush %%ebp\n\tmovl %%ebp, %%esp\n", fname);
-	section_write(SECTION_TEXT, buf, len);
-}
-
-static void end_function(void)
-{
-	static const char *exit = "\tpop %ebp\n\tret\n";
-
-	section_write(SECTION_TEXT, exit, strlen(exit));
 }
 
 static void check_usage(struct local_vars *locals, struct ast_node *ast)
@@ -189,24 +172,20 @@ static size_t read_locals(const char *fname,
 	return nbytes;
 }
 
-/*
- * move_sp:
- * Add/subtract `n` bytes from the stack pointer.
- */
-static void move_sp(size_t n, int sub)
+static void write_x86(struct x86_sequence *x86)
 {
+	struct x86_instruction *x;
 	char buf[64];
 	size_t len;
 
-	if (!n)
-		return;
-
-	len = sprintf(buf, "\t%s $%lu, %%esp\n", sub ? "subl" : "addl", n);
-	section_write(SECTION_TEXT, buf, len);
+	buf[0] = '\n';
+	section_write(SECTION_TEXT, buf, 1);
+	VECTOR_ITER(&x86->seq, x) {
+		len = x86_write_instruction(x, buf);
+		printf("%s", buf);
+		section_write(SECTION_TEXT, buf, len);
+	}
 }
-
-#define grow_stack(n)   move_sp(n, 0)
-#define shrink_stack(n) move_sp(n, 1)
 
 /*
  * translate_function:
@@ -216,30 +195,23 @@ void translate_function(const char *fname, struct graph_node *g)
 {
 	size_t bytes;
 	struct local_vars locals;
-	struct ir_sequence ir;
 	struct x86_sequence x86;
 
 	local_init(&locals);
-	ir_init(&ir);
 	x86_seq_init(&x86, &locals);
 
 	bytes = read_locals(fname, &locals, g);
 
-	for (; g; g = g->next) {
-		if (g->type == ASG_NODE_STATEMENT)
-			ir_parse(&ir, ((struct asg_node_statement *)g)->ast);
-	}
-	ir_print_sequence(&ir);
-	x86_seq_translate_ir(&x86, &ir);
+	x86_begin_function(&x86, fname);
+	x86_grow_stack(&x86, bytes);
+	x86_translate(&x86, g);
+	x86_shrink_stack(&x86, bytes);
+	x86_end_function(&x86);
+
+	write_x86(&x86);
 
 	x86_seq_destroy(&x86);
-	ir_destroy(&ir);
 	local_destroy(&locals);
-
-	begin_function(fname);
-	grow_stack(bytes);
-	shrink_stack(bytes);
-	end_function();
 }
 
 void flush_to_file(char *filename)
