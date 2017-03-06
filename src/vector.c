@@ -38,6 +38,15 @@ void vector_append(struct vector *v, void *elem)
 }
 
 /*
+ * vector_clear:
+ * Empty vector.
+ */
+void vector_clear(struct vector *v)
+{
+	v->nmembs = 0;
+}
+
+/*
  * vector_pop:
  * Remove the last element from vector and store it in `ret`.
  */

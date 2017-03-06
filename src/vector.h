@@ -21,6 +21,7 @@ struct vector {
 
 void vector_init(struct vector *v, size_t elem_size);
 void vector_destroy(struct vector *v);
+void vector_clear(struct vector *v);
 
 void vector_append(struct vector *v, void *elem);
 int vector_pop(struct vector *v, void *ret);
