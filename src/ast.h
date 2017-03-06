@@ -43,6 +43,10 @@ enum {
 #define TAG_IS_UNARY(tag) \
 	((tag) >= EXPR_ADDRESS && (tag) <= EXPR_LOGICAL_NOT)
 
+#define TAG_IS_COND(tag) \
+	((tag) == EXPR_LOGICAL_OR || (tag) == EXPR_LOGICAL_AND || \
+	 ((tag) >= EXPR_EQ && (tag) <= EXPR_GE) || (tag) == EXPR_LOGICAL_NOT)
+
 /* A single node in the abstract syntax tree. */
 struct ast_node {
 	int tag;
