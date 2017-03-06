@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "ir.h"
+#include "types.h"
 
 void ir_init(struct ir_sequence *ir)
 {
@@ -15,6 +16,11 @@ void ir_init(struct ir_sequence *ir)
 void ir_destroy(struct ir_sequence *ir)
 {
 	vector_destroy(&ir->seq);
+}
+
+void ir_clear(struct ir_sequence *ir)
+{
+	vector_clear(&ir->seq);
 }
 
 #define IS_TERM(n) \
@@ -101,19 +107,47 @@ static int ir_read_ast(struct ir_sequence *ir,
 	return inst.target;
 }
 
-void ir_parse(struct ir_sequence *ir, struct ast_node *expr)
+static void ir_compare_zero(struct ir_sequence *ir, int term, void *item)
+{
+	struct ir_instruction inst;
+
+	inst.tag = IR_TEST;
+	inst.target = -1;
+	inst.type_flags = TYPE_INT;
+	if (term) {
+		inst.lhs.op_type = IR_OPERAND_TERMINAL;
+		inst.lhs.term = item;
+	} else {
+		inst.lhs.op_type = IR_OPERAND_TEMP_REG;
+		inst.lhs.reg = ((struct ir_instruction *)item)->target;
+	}
+	vector_append(&ir->seq, &inst);
+}
+
+void ir_parse_expr(struct ir_sequence *ir, struct ast_node *expr, int cond)
 {
 	struct tmp_reg t;
+	struct ir_instruction inst;
 	int i;
 
-	/* Not an operation. */
-	if (expr->tag <= NODE_STRLIT)
+	if (expr->tag == NODE_STRLIT)
 		return;
 
 	t.next = 0;
 	for (i = 0; i < NUM_TEMP_REGS - 1; ++i)
 		t.items[i] = i + 1;
 	t.items[i] = -1;
+
+	if (cond && !TAG_IS_COND(expr->tag)) {
+		if (expr->tag == NODE_CONSTANT || expr->tag == NODE_IDENTIFIER) {
+			ir_compare_zero(ir, 1, expr);
+		} else {
+			ir_read_ast(ir, expr, &t);
+			vector_get(&ir->seq, ir->seq.nmembs - 1, &inst);
+			ir_compare_zero(ir, 0, &inst);
+		}
+		return;
+	}
 
 	ir_read_ast(ir, expr, &t);
 }
@@ -166,7 +200,10 @@ void ir_print_sequence(struct ir_sequence *ir)
 	struct ir_instruction *inst;
 
 	VECTOR_ITER(&ir->seq, inst) {
-		if (inst->tag == EXPR_ASSIGN) {
+		if (inst->tag == IR_TEST) {
+			printf("test\t");
+			ir_print_operand(&inst->lhs);
+		} else if (inst->tag == EXPR_ASSIGN) {
 			if (inst->lhs.op_type == IR_OPERAND_TEMP_REG) {
 				printf("M[");
 				ir_print_operand(&inst->lhs);
