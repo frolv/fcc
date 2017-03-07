@@ -195,7 +195,7 @@ static void write_x86(struct x86_sequence *x86)
 	section_write(SECTION_TEXT, buf, 1);
 	VECTOR_ITER(&x86->seq, x) {
 		len = x86_write_instruction(x, buf);
-		printf("%s", buf);
+		/* printf("%s", buf); */
 		section_write(SECTION_TEXT, buf, len);
 	}
 }

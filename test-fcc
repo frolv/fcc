@@ -5,6 +5,10 @@ testdir=test
 make clean
 make
 
-./fcc "$testdir/cond.c"
-./fcc "$testdir/loop.c"
-./fcc "$testdir/simp.c"
+echo
+
+for file in cond.c loop.c simp.c; do
+	path="$testdir/$file"
+	echo "Running fcc on $path"
+	./fcc "$path"
+done
