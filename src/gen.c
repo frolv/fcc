@@ -145,15 +145,28 @@ static void scan_locals(struct local_vars *locals, struct graph_node *g)
 
 static size_t read_locals(const char *fname,
                           struct local_vars *locals,
+                          struct ast_node *params,
                           struct graph_node *g)
 {
 	size_t nbytes, size;
 	struct local *l;
+	int nparams, lstart;
 
+	if (params)
+		add_locals(locals, params);
+
+	nparams = locals->locals.nmembs;
+	lstart = (nparams << 2) + 4;
 	scan_locals(locals, g);
 	nbytes = 0;
 
 	VECTOR_ITER(&locals->locals, l) {
+		if (nparams) {
+			l->offset = lstart - (nparams << 2);
+			--nparams;
+			continue;
+		}
+
 		if (!(l->flags & LFLAGS_USED)) {
 			warning_unused(fname, l->name);
 			continue;
@@ -164,7 +177,7 @@ static size_t read_locals(const char *fname,
 			nbytes = ALIGN(nbytes, size);
 
 		nbytes += size;
-		l->offset = nbytes;
+		l->offset = -((int)nbytes);
 	}
 	if (!ALIGNED(nbytes, 4))
 		nbytes = ALIGN(nbytes, 4);
@@ -191,7 +204,9 @@ static void write_x86(struct x86_sequence *x86)
  * translate_function:
  * Translate the ASG for a single C function to x86 assembly.
  */
-void translate_function(const char *fname, struct graph_node *g)
+void translate_function(const char *fname,
+                        struct ast_node *params,
+                        struct graph_node *g)
 {
 	size_t bytes;
 	struct local_vars locals;
@@ -200,7 +215,7 @@ void translate_function(const char *fname, struct graph_node *g)
 	local_init(&locals);
 	x86_seq_init(&x86, &locals);
 
-	bytes = read_locals(fname, &locals, g);
+	bytes = read_locals(fname, &locals, params, g);
 
 	x86_begin_function(&x86, fname);
 	x86_grow_stack(&x86, bytes);

@@ -5,6 +5,8 @@
 #ifndef FCC_LOCAL_H
 #define FCC_LOCAL_H
 
+#include <stdlib.h>
+
 #include "vector.h"
 
 #define LFLAGS_USED 0x1
@@ -12,7 +14,7 @@
 /* A local variable within a function. */
 struct local {
 	const char      *name;  /* variable name */
-	size_t          offset; /* offset from base pointer */
+	off_t           offset; /* offset from base pointer */
 	unsigned int    type;   /* type flags; see types.h */
 	unsigned int    flags;  /* various flags */
 };

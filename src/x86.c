@@ -50,6 +50,14 @@ void x86_begin_function(struct x86_sequence *seq, const char *fname)
 	out.op1.type = X86_OPERAND_GPR;
 	out.op1.gpr = X86_GPR_BP;
 	vector_append(&seq->seq, &out);
+
+	out.instruction = X86_MOV;
+	out.size = 4;
+	out.op1.type = X86_OPERAND_GPR;
+	out.op1.gpr = X86_GPR_SP;
+	out.op2.type = X86_OPERAND_GPR;
+	out.op2.gpr = X86_GPR_BP;
+	vector_append(&seq->seq, &out);
 }
 
 /*
@@ -173,7 +181,7 @@ static void ir_to_x86_operand(struct x86_sequence *seq,
 			/* local variable: offset from base pointer */
 			l = local_find(seq->locals, i->term->lexeme);
 			x->type = X86_OPERAND_OFFSET;
-			x->offset.off = -(l->offset);
+			x->offset.off = l->offset;
 			x->offset.gpr = X86_GPR_BP;
 			break;
 		case NODE_CONSTANT:

@@ -59,6 +59,8 @@ typedef void * yyscan_t;
 %type <node> direct_declarator
 %type <node> declarator_list
 %type <node> declarator
+%type <node> parameter_list
+%type <node> parameter_declaration
 %type <node> expr
 %type <node> assign_expr
 %type <node> logical_or_expr
@@ -109,7 +111,7 @@ function_def
 	: type_specifiers { symtab_new_scope(); } declarator
 	{ symtab_add_func($3->lexeme, $1, $3->left); }
 	statement_block_noscope {
-		translate_function($3->lexeme, $5);
+		translate_function($3->lexeme, $3->left, $5);
 		/* print_asg($5); */
 		/* free_asg($5); */
 		symtab_destroy_scope();
@@ -149,14 +151,16 @@ declarator
 
 direct_declarator
 	: TOKEN_ID { $$ = create_node(NODE_NEWID, yyget_text(scanner)); }
-	| direct_declarator '(' parameter_list ')'
-	| direct_declarator '(' ')'
+	| direct_declarator '(' parameter_list ')' { $1->left = $3; }
+	| direct_declarator '(' ')' { $1->left = NULL; }
 	;
 
 /* List of parameters in function prototype. */
 parameter_list
 	: parameter_declaration
-	| parameter_list ',' parameter_declaration
+	| parameter_list ',' parameter_declaration {
+		$$ = create_expr(EXPR_COMMA, $1, $3);
+	}
 	;
 
 parameter_declaration
@@ -165,8 +169,9 @@ parameter_declaration
 			free_tree($2);
 			exit(1);
 		}
+		$$ = $2;
 	}
-	| type_specifiers
+	| type_specifiers { $$ = NULL; }
 	;
 
 statement_block
