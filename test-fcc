@@ -1,24 +1,10 @@
 #!/bin/bash
 
-err_test() {
-	echo "FILE $1"
-	cat -n "$1" 1>&2
-	sleep 1
-	echo "========================================" 1>&2
-	echo "Running fcc..." 1>&2
-	echo "========================================" 1>&2
-	sleep .5
-	./fcc "$1"
-	sleep 5
-	echo
-}
+testdir=test
 
-./fcc "test/add.c" | less -R
-./fcc "test/cond.c" | less -R
-./fcc "test/loop.c" | less -R
+make clean
+make
 
-err_test "test/err_decl.c"
-err_test "test/err_undecl.c"
-err_test "test/err_assign.c"
-err_test "test/err_incomp.c"
-err_test "test/warnings.c" >/dev/null
+./fcc "$testdir/cond.c"
+./fcc "$testdir/loop.c"
+./fcc "$testdir/simp.c"
