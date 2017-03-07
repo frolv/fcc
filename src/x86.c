@@ -87,6 +87,9 @@ void x86_grow_stack(struct x86_sequence *seq, size_t bytes)
 {
 	struct x86_instruction out;
 
+	if (!bytes)
+		return;
+
 	out.instruction = X86_SUB;
 	out.size = 4;
 	out.op1.type = X86_OPERAND_CONSTANT;
@@ -103,6 +106,9 @@ void x86_grow_stack(struct x86_sequence *seq, size_t bytes)
 void x86_shrink_stack(struct x86_sequence *seq, size_t bytes)
 {
 	struct x86_instruction out;
+
+	if (!bytes)
+		return;
 
 	out.instruction = X86_ADD;
 	out.size = 4;
@@ -440,16 +446,51 @@ static void translate_arithmetic_instruction(struct x86_sequence *seq,
 	(void)cond;
 }
 
-static void translate_rshift_instruction(struct x86_sequence *seq,
-                                         struct ir_instruction *i,
-                                         int cond)
+/*
+ * translate_shift_instruction:
+ * Translate a bitshift IR instruction to x86.
+ */
+static void translate_shift_instruction(struct x86_sequence *seq,
+                                        struct ir_instruction *i,
+                                        int cond)
 {
-	return __translate_generic(seq, i,
-	                           i->type_flags & QUAL_UNSIGNED
-	                           ? X86_SHR : X86_SAR, 1);
+	struct x86_instruction out;
+
+	if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+		x86_load_value(seq, &i->lhs, X86_GPR_AX);
+	else
+		x86_load_tmp_reg(seq, &i->lhs, X86_GPR_AX);
+
+	out.instruction = i->tag == EXPR_LSHIFT
+	                  ? X86_SHL
+	                  : (i->type_flags & QUAL_UNSIGNED
+	                     ? X86_SHR : X86_SAR);
+	out.size = type_size(i->type_flags);
+
+	/* Number of bits to shift by is stored in cl (low byte of ecx) */
+	if (i->rhs.op_type == IR_OPERAND_TERMINAL) {
+		if (i->rhs.term->tag == NODE_CONSTANT) {
+			/* Unless it's a constant, which can be used directly */
+			out.op1.type = X86_OPERAND_CONSTANT;
+			out.op1.constant = i->rhs.term->value;
+		} else {
+			x86_load_value(seq, &i->rhs, X86_GPR_CX);
+			out.op1.type = X86_OPERAND_GPR;
+			out.op1.gpr = X86_GPR_CL;
+		}
+	} else {
+		x86_load_tmp_reg(seq, &i->rhs, X86_GPR_CX);
+		out.op1.type = X86_OPERAND_GPR;
+		out.op1.gpr = X86_GPR_CL;
+	}
+
+	out.op2.type = X86_OPERAND_GPR;
+	out.op2.gpr = X86_GPR_AX;
+
+	vector_append(&seq->seq, &out);
+	tmp_reg_push(seq, i->target, X86_GPR_AX);
 
 	(void)cond;
-
 }
 
 /*
@@ -710,8 +751,8 @@ static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = 
 	[EXPR_GT] = translate_comparison_instruction,
 	[EXPR_LE] = translate_comparison_instruction,
 	[EXPR_GE] = translate_comparison_instruction,
-	[EXPR_LSHIFT] = translate_arithmetic_instruction,
-	[EXPR_RSHIFT] = translate_rshift_instruction,
+	[EXPR_LSHIFT] = translate_shift_instruction,
+	[EXPR_RSHIFT] = translate_shift_instruction,
 	[EXPR_ADD] = translate_arithmetic_instruction,
 	[EXPR_SUB] = translate_arithmetic_instruction,
 	[EXPR_MULT] = translate_multiplicative_instruction,
@@ -981,6 +1022,8 @@ static char *x86_gprs[] = {
 	[X86_GPR_AH] = "ah",
 	[X86_GPR_AX] = "eax",
 	[X86_GPR_BX] = "ebx",
+	[X86_GPR_CL] = "cl",
+	[X86_GPR_CH] = "ch",
 	[X86_GPR_CX] = "ecx",
 	[X86_GPR_DX] = "edx",
 	[X86_GPR_SI] = "esi",
