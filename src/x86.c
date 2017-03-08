@@ -181,22 +181,22 @@ static void ir_to_x86_operand(struct x86_sequence *seq,
 {
 	struct local *l;
 
-	if (i->op_type == IR_OPERAND_TERMINAL) {
-		switch (i->term->tag) {
+	if (i->op_type == IR_OPERAND_AST_NODE) {
+		switch (i->node->tag) {
 		case NODE_IDENTIFIER:
 			/* local variable: offset from base pointer */
-			l = local_find(seq->locals, i->term->lexeme);
+			l = local_find(seq->locals, i->node->lexeme);
 			x->type = X86_OPERAND_OFFSET;
 			x->offset.off = l->offset;
 			x->offset.gpr = X86_GPR_BP;
 			break;
 		case NODE_CONSTANT:
-			if (i->term->expr_flags & QUAL_UNSIGNED ||
-			    FLAGS_IS_PTR(i->term->expr_flags))
+			if (i->node->expr_flags & QUAL_UNSIGNED ||
+			    FLAGS_IS_PTR(i->node->expr_flags))
 				x->type = X86_OPERAND_UCONSTANT;
 			else
 				x->type = X86_OPERAND_CONSTANT;
-			x->constant = i->term->value;
+			x->constant = i->node->value;
 			break;
 		case NODE_STRLIT:
 			x->type = X86_OPERAND_LABEL;
@@ -223,7 +223,7 @@ static int x86_load_value(struct x86_sequence *seq,
 		gpr = X86_GPR_AX;
 
 	out.instruction = X86_MOV;
-	out.size = type_size(val->term->expr_flags);
+	out.size = type_size(val->node->expr_flags);
 	ir_to_x86_operand(seq, val, &out.op1);
 	out.op2.type = X86_OPERAND_GPR;
 	out.op2.gpr = gpr;
@@ -302,13 +302,13 @@ static void translate_assign_instruction(struct x86_sequence *seq,
 	struct x86_instruction out;
 	int gpr;
 
-	if (i->lhs.op_type == IR_OPERAND_TERMINAL) {
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
 		out.instruction = X86_MOV;
 		out.size = type_size(i->type_flags);
 		ir_to_x86_operand(seq, &i->lhs, &out.op2);
 
-		if (i->rhs.op_type == IR_OPERAND_TERMINAL) {
-			switch (i->rhs.term->tag) {
+		if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
+			switch (i->rhs.node->tag) {
 			case NODE_IDENTIFIER:
 				x86_load_value(seq, &i->rhs, X86_GPR_AX);
 				out.op1.type = X86_OPERAND_GPR;
@@ -350,8 +350,8 @@ static void __translate_generic(struct x86_sequence *seq,
 	out.size = type_size(i->type_flags);
 	ax = 0;
 
-	if (i->lhs.op_type == IR_OPERAND_TERMINAL) {
-		switch (i->lhs.term->tag) {
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
+		switch (i->lhs.node->tag) {
 		case NODE_IDENTIFIER:
 			x86_load_value(seq, &i->lhs, X86_GPR_AX);
 			out.op2.type = X86_OPERAND_GPR;
@@ -378,8 +378,8 @@ static void __translate_generic(struct x86_sequence *seq,
 		op = &out.op2;
 	}
 
-	if (i->rhs.op_type == IR_OPERAND_TERMINAL) {
-		switch (i->rhs.term->tag) {
+	if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
+		switch (i->rhs.node->tag) {
 		case NODE_IDENTIFIER:
 			x86_load_value(seq, &i->rhs, reg);
 			op->type = X86_OPERAND_GPR;
@@ -456,7 +456,7 @@ static void translate_shift_instruction(struct x86_sequence *seq,
 {
 	struct x86_instruction out;
 
-	if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE)
 		x86_load_value(seq, &i->lhs, X86_GPR_AX);
 	else
 		x86_load_tmp_reg(seq, &i->lhs, X86_GPR_AX);
@@ -468,11 +468,11 @@ static void translate_shift_instruction(struct x86_sequence *seq,
 	out.size = type_size(i->type_flags);
 
 	/* Number of bits to shift by is stored in cl (low byte of ecx) */
-	if (i->rhs.op_type == IR_OPERAND_TERMINAL) {
-		if (i->rhs.term->tag == NODE_CONSTANT) {
+	if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
+		if (i->rhs.node->tag == NODE_CONSTANT) {
 			/* Unless it's a constant, which can be used directly */
 			out.op1.type = X86_OPERAND_CONSTANT;
-			out.op1.constant = i->rhs.term->value;
+			out.op1.constant = i->rhs.node->value;
 		} else {
 			x86_load_value(seq, &i->rhs, X86_GPR_CX);
 			out.op1.type = X86_OPERAND_GPR;
@@ -541,8 +541,8 @@ static void translate_multiplicative_instruction(struct x86_sequence *seq,
 	out.op3.gpr = X86_GPR_AX;
 	ax = 0;
 
-	if (i->lhs.op_type == IR_OPERAND_TERMINAL) {
-		switch (i->lhs.term->tag) {
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
+		switch (i->lhs.node->tag) {
 		case NODE_IDENTIFIER:
 			x86_load_value(seq, &i->lhs, X86_GPR_AX);
 			out.op2.type = X86_OPERAND_GPR;
@@ -568,8 +568,8 @@ static void translate_multiplicative_instruction(struct x86_sequence *seq,
 		op = &out.op2;
 	}
 
-	if (i->rhs.op_type == IR_OPERAND_TERMINAL) {
-		switch (i->rhs.term->tag) {
+	if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
+		switch (i->rhs.node->tag) {
 		case NODE_IDENTIFIER:
 			x86_load_value(seq, &i->rhs, reg);
 			op->type = X86_OPERAND_GPR;
@@ -601,7 +601,7 @@ static void translate_division_instruction(struct x86_sequence *seq,
 {
 	struct x86_instruction out;
 
-	if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE)
 		x86_load_value(seq, &i->lhs, X86_GPR_AX);
 	else
 		x86_load_tmp_reg(seq, &i->lhs, X86_GPR_AX);
@@ -610,7 +610,7 @@ static void translate_division_instruction(struct x86_sequence *seq,
 	out.size = 0;
 	vector_append(&seq->seq, &out);
 
-	if (i->rhs.op_type == IR_OPERAND_TERMINAL)
+	if (i->rhs.op_type == IR_OPERAND_AST_NODE)
 		x86_load_value(seq, &i->rhs, X86_GPR_CX);
 	else
 		x86_load_tmp_reg(seq, &i->rhs, X86_GPR_CX);
@@ -638,7 +638,7 @@ static void translate_dereference_instruction(struct x86_sequence *seq,
 	struct x86_instruction out;
 	int gpr;
 
-	if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE)
 		gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
 	else
 		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
@@ -673,7 +673,7 @@ static void translate_unary_instruction(struct x86_sequence *seq,
 		out.instruction = X86_CMP;
 		out.size = 0;
 
-		if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+		if (i->lhs.op_type == IR_OPERAND_AST_NODE)
 			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
 		else
 			gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
@@ -697,14 +697,14 @@ static void translate_unary_instruction(struct x86_sequence *seq,
 		out.op2.gpr = X86_GPR_AX;
 	} else if (i->tag == EXPR_UNARY_PLUS) {
 		/* Just load the value. */
-		if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+		if (i->lhs.op_type == IR_OPERAND_AST_NODE)
 			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
 		else
 			gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
 		tmp_reg_push(seq, i->target, gpr);
 		return;
 	} else {
-		if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+		if (i->lhs.op_type == IR_OPERAND_AST_NODE)
 			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
 		else
 			gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
@@ -730,7 +730,7 @@ static void translate_test_instruction(struct x86_sequence *seq,
 	struct x86_instruction out;
 	int gpr;
 
-	if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE)
 		gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
 	else
 		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
@@ -924,8 +924,8 @@ void x86_translate_ret(struct x86_sequence *seq,
 	if (ret->retval) {
 		if (ret->retval->tag <= NODE_STRLIT) {
 			/* retval is a terminal, not an expression */
-			op.op_type = IR_OPERAND_TERMINAL;
-			op.term = ret->retval;
+			op.op_type = IR_OPERAND_AST_NODE;
+			op.node = ret->retval;
 			x86_load_value(seq, &op, X86_GPR_AX);
 		} else {
 			ir_parse_expr(ir, ret->retval, 0);

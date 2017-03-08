@@ -13,7 +13,7 @@
 
 #define NUM_TEMP_REGS 31
 
-#define IR_OPERAND_TERMINAL 0
+#define IR_OPERAND_AST_NODE 0
 #define IR_OPERAND_TEMP_REG 1
 #define IR_OPERAND_LABEL    2
 
@@ -25,7 +25,7 @@
 struct ir_operand {
 	int op_type;
 	union {
-		struct ast_node *term;
+		struct ast_node *node;
 		int reg;
 	};
 };

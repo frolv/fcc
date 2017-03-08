@@ -46,8 +46,8 @@ static int ir_read_ast(struct ir_sequence *ir,
 		inst.type_flags = expr->expr_flags;
 
 		if (IS_TERM(expr->left)) {
-			inst.lhs.op_type = IR_OPERAND_TERMINAL;
-			inst.lhs.term = expr->left;
+			inst.lhs.op_type = IR_OPERAND_AST_NODE;
+			inst.lhs.node = expr->left;
 
 			inst.target = temps->next;
 			temps->next = temps->items[temps->next];
@@ -77,8 +77,8 @@ static int ir_read_ast(struct ir_sequence *ir,
 			inst.tag = EXPR_UNARY_PLUS;
 			inst.target = temps->next;
 			temps->next = temps->items[temps->next];
-			inst.lhs.op_type = IR_OPERAND_TERMINAL;
-			inst.lhs.term = expr->right;
+			inst.lhs.op_type = IR_OPERAND_AST_NODE;
+			inst.lhs.node = expr->right;
 			vector_append(&ir->seq, &inst);
 			return inst.target;
 		} else {
@@ -91,14 +91,14 @@ static int ir_read_ast(struct ir_sequence *ir,
 		inst.target = temps->next;
 		temps->next = temps->items[temps->next];
 
-		inst.lhs.op_type = IR_OPERAND_TERMINAL;
-		inst.lhs.term = expr->left;
-		inst.rhs.op_type = IR_OPERAND_TERMINAL;
-		inst.rhs.term = expr->right;
+		inst.lhs.op_type = IR_OPERAND_AST_NODE;
+		inst.lhs.node = expr->left;
+		inst.rhs.op_type = IR_OPERAND_AST_NODE;
+		inst.rhs.node = expr->right;
 	} else if (IS_TERM(expr->left)) {
 		/* Expression and constant: update expression's register. */
-		inst.lhs.op_type = IR_OPERAND_TERMINAL;
-		inst.lhs.term = expr->left;
+		inst.lhs.op_type = IR_OPERAND_AST_NODE;
+		inst.lhs.node = expr->left;
 		inst.rhs.op_type = IR_OPERAND_TEMP_REG;
 		inst.rhs.reg = ir_read_ast(ir, expr->right, temps);
 
@@ -107,8 +107,8 @@ static int ir_read_ast(struct ir_sequence *ir,
 		/* Ditto. */
 		inst.lhs.op_type = IR_OPERAND_TEMP_REG;
 		inst.lhs.reg = ir_read_ast(ir, expr->left, temps);
-		inst.rhs.op_type = IR_OPERAND_TERMINAL;
-		inst.rhs.term = expr->right;
+		inst.rhs.op_type = IR_OPERAND_AST_NODE;
+		inst.rhs.node = expr->right;
 
 		inst.target = inst.lhs.reg;
 	} else {
@@ -137,8 +137,8 @@ static void ir_compare_zero(struct ir_sequence *ir, int term, void *item)
 	inst.target = -1;
 	inst.type_flags = TYPE_INT;
 	if (term) {
-		inst.lhs.op_type = IR_OPERAND_TERMINAL;
-		inst.lhs.term = item;
+		inst.lhs.op_type = IR_OPERAND_AST_NODE;
+		inst.lhs.node = item;
 	} else {
 		inst.lhs.op_type = IR_OPERAND_TEMP_REG;
 		inst.lhs.reg = ((struct ir_instruction *)item)->target;
@@ -181,10 +181,10 @@ static void ir_print_operand(struct ir_operand *op)
 		return;
 	}
 
-	if (op->term->tag == NODE_CONSTANT)
-		printf("%ld", op->term->value);
+	if (op->node->tag == NODE_CONSTANT)
+		printf("%ld", op->node->value);
 	else
-		printf("%s", op->term->lexeme);
+		printf("%s", op->node->lexeme);
 }
 
 static char *expr_str[] = {
