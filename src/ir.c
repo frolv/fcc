@@ -35,16 +35,66 @@ struct tmp_reg {
 
 static int ir_read_ast(struct ir_sequence *ir,
                        struct ast_node *expr,
+                       struct tmp_reg *temps);
+
+/*
+ * ir_parse_arguments:
+ * Parse the argument list for a function and convert to IR instructions.
+ */
+static void ir_parse_arguments(struct ir_sequence *ir,
+                               struct ast_node *arglist,
+                               struct tmp_reg *temps)
+{
+	struct ir_instruction inst;
+
+	if (!arglist)
+		return;
+
+	if (IS_TERM(arglist)) {
+		inst.tag = IR_PUSH;
+		inst.lhs.op_type = IR_OPERAND_AST_NODE;
+		inst.lhs.node = arglist;
+	} else if (arglist->tag == EXPR_COMMA) {
+		ir_parse_arguments(ir, arglist->right, temps);
+		ir_parse_arguments(ir, arglist->left, temps);
+		return;
+	} else {
+		/* Some expression. */
+		inst.tag = IR_PUSH;
+		inst.lhs.op_type = IR_OPERAND_TEMP_REG;
+		inst.lhs.reg = ir_read_ast(ir, arglist, temps);
+		temps->items[inst.lhs.reg] = temps->next;
+		temps->next = inst.lhs.reg;
+	}
+	vector_append(&ir->seq, &inst);
+}
+
+static int ir_read_ast(struct ir_sequence *ir,
+                       struct ast_node *expr,
                        struct tmp_reg *temps)
 {
 	struct ir_instruction inst;
 	int tmp;
 
+	inst.tag = expr->tag;
+	inst.type_flags = expr->expr_flags;
+
+	if (expr->tag == EXPR_FUNC) {
+		inst.lhs.op_type = IR_OPERAND_AST_NODE;
+		inst.lhs.node = expr->left;
+		inst.rhs.op_type = IR_OPERAND_AST_NODE;
+		inst.rhs.node = expr->right;
+		ir_parse_arguments(ir, expr->right, temps);
+
+		inst.target = temps->next;
+		temps->next = temps->items[temps->next];
+
+		vector_append(&ir->seq, &inst);
+		return inst.target;
+	}
+
 	if (!expr->right) {
 		/* Unary operator. */
-		inst.tag = expr->tag;
-		inst.type_flags = expr->expr_flags;
-
 		if (IS_TERM(expr->left)) {
 			inst.lhs.op_type = IR_OPERAND_AST_NODE;
 			inst.lhs.node = expr->left;
@@ -61,9 +111,6 @@ static int ir_read_ast(struct ir_sequence *ir,
 		vector_append(&ir->seq, &inst);
 		return inst.target;
 	}
-
-	inst.tag = expr->tag;
-	inst.type_flags = expr->expr_flags;
 
 	if (expr->tag == EXPR_COMMA) {
 		if (!IS_TERM(expr->left)) {
@@ -214,7 +261,7 @@ static char *expr_str[] = {
 	[EXPR_UNARY_MINUS]      = "-",
 	[EXPR_NOT]              = "~",
 	[EXPR_LOGICAL_NOT]      = "!",
-	[EXPR_FUNC]             = "CALL"
+	[EXPR_FUNC]             = "CALL "
 };
 
 void ir_print_sequence(struct ir_sequence *ir)
@@ -224,6 +271,9 @@ void ir_print_sequence(struct ir_sequence *ir)
 	VECTOR_ITER(&ir->seq, inst) {
 		if (inst->tag == IR_TEST) {
 			printf("test\t");
+			ir_print_operand(&inst->lhs);
+		} else if (inst->tag == IR_PUSH) {
+			printf("push\t");
 			ir_print_operand(&inst->lhs);
 		} else if (inst->tag == EXPR_ASSIGN) {
 			if (inst->lhs.op_type == IR_OPERAND_TEMP_REG) {
@@ -235,7 +285,7 @@ void ir_print_sequence(struct ir_sequence *ir)
 			}
 			printf("\t= ");
 			ir_print_operand(&inst->rhs);
-		} else if (TAG_IS_UNARY(inst->tag)) {
+		} else if (TAG_IS_UNARY(inst->tag) || inst->tag == EXPR_FUNC) {
 			printf("t%d\t= %s", inst->target, expr_str[inst->tag]);
 			ir_print_operand(&inst->lhs);
 		} else {

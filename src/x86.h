@@ -47,6 +47,7 @@ enum {
 	X86_TEST,
 	X86_CDQ,
 	X86_RET,
+	X86_CALL,
 	X86_LABEL,
 	X86_NAMED_LABEL
 };
@@ -72,6 +73,7 @@ enum {
 	X86_OPERAND_CONSTANT,
 	X86_OPERAND_UCONSTANT,
 	X86_OPERAND_LABEL,
+	X86_OPERAND_FUNC,
 	X86_OPERAND_OFFSET
 };
 
@@ -81,6 +83,7 @@ struct x86_operand {
 		int gpr;
 		int constant;
 		int label;
+		char *func;
 		struct {
 			int16_t off;
 			int16_t gpr;

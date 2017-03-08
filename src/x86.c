@@ -7,6 +7,7 @@
 
 #include "gen.h"
 #include "ir.h"
+#include "symtab.h"
 #include "types.h"
 #include "x86.h"
 
@@ -720,6 +721,45 @@ static void translate_unary_instruction(struct x86_sequence *seq,
 }
 
 /*
+ * num_args:
+ * Count the number of arguments in argument list AST `arglist`.
+ */
+static int num_args(struct ast_node *arglist)
+{
+	if (!arglist)
+		return 0;
+	else if (arglist->tag == EXPR_COMMA)
+		return num_args(arglist->left) + num_args(arglist->right);
+	else
+		return 1;
+}
+
+/*
+ * translate_function_call:
+ * Translate a function call to x86 and fix the stack afterwards.
+ */
+static void translate_function_call(struct x86_sequence *seq,
+                                    struct ir_instruction *i,
+                                    int cond)
+{
+	struct x86_instruction out;
+	int argc;
+
+	out.instruction = X86_CALL;
+	out.size = 0;
+	out.op1.type = X86_OPERAND_FUNC;
+	out.op1.func = i->lhs.node->lexeme;
+	vector_append(&seq->seq, &out);
+
+	/* Correct for argument pushes. */
+	argc = num_args(i->rhs.node);
+	x86_shrink_stack(seq, argc << 2);
+
+	tmp_reg_push(seq, i->target, X86_GPR_AX);
+	(void)cond;
+}
+
+/*
  * translate_test_instruction:
  * Translate an IR test instruction to x86.
  */
@@ -741,6 +781,39 @@ static void translate_test_instruction(struct x86_sequence *seq,
 	out.op1.constant = gpr;
 	out.op2.type = X86_OPERAND_GPR;
 	out.op2.gpr = gpr;
+
+	vector_append(&seq->seq, &out);
+	(void)cond;
+}
+
+/*
+ * translate_push_instruction:
+ * Translate a push instruction to x86.
+ */
+static void translate_push_instruction(struct x86_sequence *seq,
+                                       struct ir_instruction *i,
+                                       int cond)
+{
+	struct x86_instruction out;
+	int gpr;
+
+	out.instruction = X86_PUSH;
+	out.size = 0;
+
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
+		if (i->lhs.node->tag == NODE_CONSTANT) {
+			out.op1.type = X86_OPERAND_CONSTANT;
+			out.op1.constant = i->lhs.node->value;
+		} else {
+			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
+			out.op1.type = X86_OPERAND_GPR;
+			out.op1.constant = gpr;
+		}
+	} else {
+		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
+		out.op1.type = X86_OPERAND_GPR;
+		out.op1.constant = gpr;
+	}
 
 	vector_append(&seq->seq, &out);
 	(void)cond;
@@ -772,8 +845,9 @@ static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = 
 	[EXPR_UNARY_MINUS] = translate_unary_instruction,
 	[EXPR_NOT] = translate_unary_instruction,
 	[EXPR_LOGICAL_NOT] = translate_unary_instruction,
-	[EXPR_FUNC] = NULL,
-	[IR_TEST] = translate_test_instruction
+	[EXPR_FUNC] = translate_function_call,
+	[IR_TEST] = translate_test_instruction,
+	[IR_PUSH] = translate_push_instruction
 };
 
 /*
@@ -956,6 +1030,7 @@ void x86_translate(struct x86_sequence *seq, struct graph_node *g)
 		case ASG_NODE_STATEMENT:
 			ir_parse_expr(&ir, ((struct asg_node_statement *)g)->ast,
 			              0);
+			ir_print_sequence(&ir);
 			x86_translate_expr(seq, &ir, 0);
 			break;
 		case ASG_NODE_CONDITIONAL:
@@ -1014,7 +1089,8 @@ static char *x86_instructions[] = {
 	[X86_CMP]       = "cmp",
 	[X86_TEST]      = "test",
 	[X86_CDQ]       = "cdq",
-	[X86_RET]       = "ret"
+	[X86_RET]       = "ret",
+	[X86_CALL]      = "call"
 };
 
 static char *x86_size_suffix[] = {
@@ -1062,6 +1138,7 @@ static int x86_num_operands(int instruction)
 	case X86_JNE:
 	case X86_JZ:
 	case X86_JNZ:
+	case X86_CALL:
 		return 1;
 	case X86_MOV:
 	case X86_ADD:
@@ -1099,6 +1176,9 @@ static int x86_write_operand(struct x86_operand *op, char *out)
 		break;
 	case X86_OPERAND_LABEL:
 		n = sprintf(out, ".L%d", op->label);
+		break;
+	case X86_OPERAND_FUNC:
+		n = sprintf(out, "%s", op->func);
 		break;
 	case X86_OPERAND_OFFSET:
 		n = sprintf(out, "%d(%%%s)",
