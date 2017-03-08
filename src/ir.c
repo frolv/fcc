@@ -38,6 +38,7 @@ static int ir_read_ast(struct ir_sequence *ir,
                        struct tmp_reg *temps)
 {
 	struct ir_instruction inst;
+	int tmp;
 
 	if (!expr->right) {
 		/* Unary operator. */
@@ -63,6 +64,27 @@ static int ir_read_ast(struct ir_sequence *ir,
 
 	inst.tag = expr->tag;
 	inst.type_flags = expr->expr_flags;
+
+	if (expr->tag == EXPR_COMMA) {
+		if (!IS_TERM(expr->left)) {
+			tmp = ir_read_ast(ir, expr->left, temps);
+			/* Discard the result. */
+			temps->items[tmp] = temps->next;
+			temps->next = tmp;
+		}
+		if (IS_TERM(expr->right)) {
+			/* Bit of a hack, but no one does this in C anyway. */
+			inst.tag = EXPR_UNARY_PLUS;
+			inst.target = temps->next;
+			temps->next = temps->items[temps->next];
+			inst.lhs.op_type = IR_OPERAND_TERMINAL;
+			inst.lhs.term = expr->right;
+			vector_append(&ir->seq, &inst);
+			return inst.target;
+		} else {
+			return ir_read_ast(ir, expr->right, temps);
+		}
+	}
 
 	if (IS_TERM(expr->left) && IS_TERM(expr->right)) {
 		/* Two terminal values: need a new temporary register. */

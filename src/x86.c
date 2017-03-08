@@ -695,6 +695,14 @@ static void translate_unary_instruction(struct x86_sequence *seq,
 		out.instruction = X86_MOVZB;
 		out.op2.type = X86_OPERAND_GPR;
 		out.op2.gpr = X86_GPR_AX;
+	} else if (i->tag == EXPR_UNARY_PLUS) {
+		/* Just load the value. */
+		if (i->lhs.op_type == IR_OPERAND_TERMINAL)
+			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
+		else
+			gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
+		tmp_reg_push(seq, i->target, gpr);
+		return;
 	} else {
 		if (i->lhs.op_type == IR_OPERAND_TERMINAL)
 			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
@@ -760,6 +768,7 @@ static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = 
 	[EXPR_MOD] = translate_division_instruction,
 	[EXPR_ADDRESS] = NULL,
 	[EXPR_DEREFERENCE] = translate_dereference_instruction,
+	[EXPR_UNARY_PLUS] = translate_unary_instruction,
 	[EXPR_UNARY_MINUS] = translate_unary_instruction,
 	[EXPR_NOT] = translate_unary_instruction,
 	[EXPR_LOGICAL_NOT] = translate_unary_instruction,
@@ -807,10 +816,8 @@ static void x86_translate_expr(struct x86_sequence *seq,
 {
 	struct ir_instruction *i;
 
-	VECTOR_ITER(&ir->seq, i) {
-		if (tr_func[i->tag])
-			tr_func[i->tag](seq, i, cond);
-	}
+	VECTOR_ITER(&ir->seq, i)
+		tr_func[i->tag](seq, i, cond);
 }
 
 void x86_translate_cond(struct x86_sequence *seq,
