@@ -32,6 +32,7 @@ struct ir_operand {
 
 #define IR_TEST   0xA0
 #define IR_PUSH   0xA1
+#define IR_LOAD   0xA2
 
 struct ir_instruction {
 	uint16_t tag;

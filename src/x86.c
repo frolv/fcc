@@ -61,6 +61,8 @@ void x86_begin_function(struct x86_sequence *seq, const char *fname)
 	vector_append(&seq->seq, &out);
 }
 
+static void x86_add_label(struct x86_sequence *seq, int label);
+
 /*
  * x86_end_function:
  * Pop base pointer and return from function.
@@ -303,33 +305,35 @@ static void translate_assign_instruction(struct x86_sequence *seq,
 	struct x86_instruction out;
 	int gpr;
 
+	out.instruction = X86_MOV;
+	out.size = type_size(i->type_flags);
 	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
-		out.instruction = X86_MOV;
-		out.size = type_size(i->type_flags);
 		ir_to_x86_operand(seq, &i->lhs, &out.op2);
-
-		if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
-			switch (i->rhs.node->tag) {
-			case NODE_IDENTIFIER:
-				x86_load_value(seq, &i->rhs, X86_GPR_AX);
-				out.op1.type = X86_OPERAND_GPR;
-				out.op1.gpr = X86_GPR_AX;
-				break;
-			case NODE_CONSTANT:
-				ir_to_x86_operand(seq, &i->rhs, &out.op1);
-				break;
-			case NODE_STRLIT:
-				break;
-			}
-		} else {
-			gpr = x86_load_tmp_reg(seq, &i->rhs, X86_GPR_ANY);
-			out.op1.type = X86_OPERAND_GPR;
-			out.op1.gpr = gpr;
-		}
 	} else {
-		/* TODO: this */
+		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_AX);
+		out.op2.type = X86_OPERAND_OFFSET;
+		out.op2.offset.off = 0;
+		out.op2.offset.gpr = gpr;
 	}
 
+	if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
+		switch (i->rhs.node->tag) {
+		case NODE_IDENTIFIER:
+			gpr = x86_load_value(seq, &i->rhs, X86_GPR_DX);
+			out.op1.type = X86_OPERAND_GPR;
+			out.op1.gpr = gpr;
+			break;
+		case NODE_CONSTANT:
+			ir_to_x86_operand(seq, &i->rhs, &out.op1);
+			break;
+		case NODE_STRLIT:
+			break;
+		}
+	} else {
+		gpr = x86_load_tmp_reg(seq, &i->rhs, X86_GPR_DX);
+		out.op1.type = X86_OPERAND_GPR;
+		out.op1.gpr = gpr;
+	}
 	vector_append(&seq->seq, &out);
 
 	(void)cond;
@@ -819,6 +823,15 @@ static void translate_push_instruction(struct x86_sequence *seq,
 	(void)cond;
 }
 
+static void translate_load_instruction(struct x86_sequence *seq,
+                                       struct ir_instruction *i,
+                                       int cond)
+{
+	x86_load_value(seq, &i->lhs, X86_GPR_AX);
+	tmp_reg_push(seq, i->target, X86_GPR_AX);
+	(void)cond;
+}
+
 static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = {
 	[EXPR_ASSIGN] = translate_assign_instruction,
 	[EXPR_LOGICAL_OR] = NULL,
@@ -847,7 +860,8 @@ static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = 
 	[EXPR_LOGICAL_NOT] = translate_unary_instruction,
 	[EXPR_FUNC] = translate_function_call,
 	[IR_TEST] = translate_test_instruction,
-	[IR_PUSH] = translate_push_instruction
+	[IR_PUSH] = translate_push_instruction,
+	[IR_LOAD] = translate_load_instruction
 };
 
 /*

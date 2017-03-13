@@ -37,6 +37,42 @@ static int ir_read_ast(struct ir_sequence *ir,
                        struct ast_node *expr,
                        struct tmp_reg *temps);
 
+static int ir_parse_lvalue_deref(struct ir_sequence *ir,
+                                 struct ast_node *expr,
+                                 struct tmp_reg *temps)
+{
+	struct ir_instruction inst;
+	int deref, tmpreg;
+
+	deref = 0;
+	for (; expr->tag == EXPR_DEREFERENCE; expr = expr->left)
+		++deref;
+
+	if (IS_TERM(expr)) {
+		tmpreg = temps->next;
+		temps->next = temps->items[temps->next];
+
+		inst.tag = IR_LOAD;
+		inst.target = tmpreg;
+		inst.type_flags = expr->expr_flags;
+		inst.lhs.op_type = IR_OPERAND_AST_NODE;
+		inst.lhs.node = expr;
+		vector_append(&ir->seq, &inst);
+	} else {
+		tmpreg = ir_read_ast(ir, expr, temps);
+	}
+
+	for (; deref > 1; --deref) {
+		inst.tag = EXPR_DEREFERENCE;
+		inst.target = tmpreg;
+		inst.lhs.op_type = IR_OPERAND_TEMP_REG;
+		inst.lhs.reg = tmpreg;
+		vector_append(&ir->seq, &inst);
+	}
+
+	return tmpreg;
+}
+
 /*
  * ir_parse_arguments:
  * Parse the argument list for a function and convert to IR instructions.
@@ -153,7 +189,13 @@ static int ir_read_ast(struct ir_sequence *ir,
 	} else if (IS_TERM(expr->right)) {
 		/* Ditto. */
 		inst.lhs.op_type = IR_OPERAND_TEMP_REG;
-		inst.lhs.reg = ir_read_ast(ir, expr->left, temps);
+		if (expr->tag == EXPR_ASSIGN &&
+		    expr->left->tag == EXPR_DEREFERENCE)
+			inst.lhs.reg = ir_parse_lvalue_deref(ir, expr->left,
+			                                     temps);
+		else
+			inst.lhs.reg = ir_read_ast(ir, expr->left, temps);
+
 		inst.rhs.op_type = IR_OPERAND_AST_NODE;
 		inst.rhs.node = expr->right;
 
@@ -161,7 +203,13 @@ static int ir_read_ast(struct ir_sequence *ir,
 	} else {
 		/* Both operands are expressions, use left's register. */
 		inst.lhs.op_type = IR_OPERAND_TEMP_REG;
-		inst.lhs.reg = ir_read_ast(ir, expr->left, temps);
+		if (expr->tag == EXPR_ASSIGN &&
+		    expr->left->tag == EXPR_DEREFERENCE)
+			inst.lhs.reg = ir_parse_lvalue_deref(ir, expr->left,
+			                                     temps);
+		else
+			inst.lhs.reg = ir_read_ast(ir, expr->left, temps);
+
 		inst.rhs.op_type = IR_OPERAND_TEMP_REG;
 		inst.rhs.reg = ir_read_ast(ir, expr->right, temps);
 
@@ -275,6 +323,9 @@ void ir_print_sequence(struct ir_sequence *ir)
 		} else if (inst->tag == IR_PUSH) {
 			printf("push\t");
 			ir_print_operand(&inst->lhs);
+		} else if (inst->tag == IR_LOAD) {
+			printf("t%d\t= ", inst->target);
+			ir_print_operand(&inst->lhs);
 		} else if (inst->tag == EXPR_ASSIGN) {
 			if (inst->lhs.op_type == IR_OPERAND_TEMP_REG) {
 				printf("M[");
@@ -285,6 +336,10 @@ void ir_print_sequence(struct ir_sequence *ir)
 			}
 			printf("\t= ");
 			ir_print_operand(&inst->rhs);
+		} else if (inst->tag == EXPR_DEREFERENCE) {
+			printf("t%d\t= M[", inst->target);
+			ir_print_operand(&inst->lhs);
+			putchar(']');
 		} else if (TAG_IS_UNARY(inst->tag) || inst->tag == EXPR_FUNC) {
 			printf("t%d\t= %s", inst->target, expr_str[inst->tag]);
 			ir_print_operand(&inst->lhs);
