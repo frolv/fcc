@@ -15,6 +15,7 @@ enum {
 	X86_MOV,
 	X86_PUSH,
 	X86_POP,
+	X86_LEA,
 	X86_ADD,
 	X86_SUB,
 	X86_OR,

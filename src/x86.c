@@ -633,6 +633,28 @@ static void translate_division_instruction(struct x86_sequence *seq,
 }
 
 /*
+ * translate_address_instruction:
+ * Translate an address-of IR instruction to x86.
+ */
+static void translate_address_instruction(struct x86_sequence *seq,
+                                          struct ir_instruction *i,
+                                          int cond)
+{
+	struct x86_instruction out;
+
+	out.instruction = X86_LEA;
+	out.size = type_size(i->type_flags);
+	ir_to_x86_operand(seq, &i->lhs, &out.op1);
+	out.op2.type = X86_OPERAND_GPR;
+	out.op2.gpr = X86_GPR_AX;
+
+	vector_append(&seq->seq, &out);
+	tmp_reg_push(seq, i->target, X86_GPR_AX);
+
+	(void)cond;
+}
+
+/*
  * translate_dereference_instruction:
  * Translate a pointer dereference IR instruction to x86.
  */
@@ -833,35 +855,35 @@ static void translate_load_instruction(struct x86_sequence *seq,
 }
 
 static void (*tr_func[])(struct x86_sequence *, struct ir_instruction *, int) = {
-	[EXPR_ASSIGN] = translate_assign_instruction,
-	[EXPR_LOGICAL_OR] = NULL,
-	[EXPR_LOGICAL_AND] = NULL,
-	[EXPR_OR] = translate_arithmetic_instruction,
-	[EXPR_XOR] = translate_arithmetic_instruction,
-	[EXPR_AND] = translate_arithmetic_instruction,
-	[EXPR_EQ] = translate_comparison_instruction,
-	[EXPR_NE] = translate_comparison_instruction,
-	[EXPR_LT] = translate_comparison_instruction,
-	[EXPR_GT] = translate_comparison_instruction,
-	[EXPR_LE] = translate_comparison_instruction,
-	[EXPR_GE] = translate_comparison_instruction,
-	[EXPR_LSHIFT] = translate_shift_instruction,
-	[EXPR_RSHIFT] = translate_shift_instruction,
-	[EXPR_ADD] = translate_arithmetic_instruction,
-	[EXPR_SUB] = translate_arithmetic_instruction,
-	[EXPR_MULT] = translate_multiplicative_instruction,
-	[EXPR_DIV] = translate_division_instruction,
-	[EXPR_MOD] = translate_division_instruction,
-	[EXPR_ADDRESS] = NULL,
-	[EXPR_DEREFERENCE] = translate_dereference_instruction,
-	[EXPR_UNARY_PLUS] = translate_unary_instruction,
-	[EXPR_UNARY_MINUS] = translate_unary_instruction,
-	[EXPR_NOT] = translate_unary_instruction,
-	[EXPR_LOGICAL_NOT] = translate_unary_instruction,
-	[EXPR_FUNC] = translate_function_call,
-	[IR_TEST] = translate_test_instruction,
-	[IR_PUSH] = translate_push_instruction,
-	[IR_LOAD] = translate_load_instruction
+	[EXPR_ASSIGN]                   = translate_assign_instruction,
+	[EXPR_LOGICAL_OR]               = NULL,
+	[EXPR_LOGICAL_AND]              = NULL,
+	[EXPR_OR]                       = translate_arithmetic_instruction,
+	[EXPR_XOR]                      = translate_arithmetic_instruction,
+	[EXPR_AND]                      = translate_arithmetic_instruction,
+	[EXPR_EQ]                       = translate_comparison_instruction,
+	[EXPR_NE]                       = translate_comparison_instruction,
+	[EXPR_LT]                       = translate_comparison_instruction,
+	[EXPR_GT]                       = translate_comparison_instruction,
+	[EXPR_LE]                       = translate_comparison_instruction,
+	[EXPR_GE]                       = translate_comparison_instruction,
+	[EXPR_LSHIFT]                   = translate_shift_instruction,
+	[EXPR_RSHIFT]                   = translate_shift_instruction,
+	[EXPR_ADD]                      = translate_arithmetic_instruction,
+	[EXPR_SUB]                      = translate_arithmetic_instruction,
+	[EXPR_MULT]                     = translate_multiplicative_instruction,
+	[EXPR_DIV]                      = translate_division_instruction,
+	[EXPR_MOD]                      = translate_division_instruction,
+	[EXPR_ADDRESS]                  = translate_address_instruction,
+	[EXPR_DEREFERENCE]              = translate_dereference_instruction,
+	[EXPR_UNARY_PLUS]               = translate_unary_instruction,
+	[EXPR_UNARY_MINUS]              = translate_unary_instruction,
+	[EXPR_NOT]                      = translate_unary_instruction,
+	[EXPR_LOGICAL_NOT]              = translate_unary_instruction,
+	[EXPR_FUNC]                     = translate_function_call,
+	[IR_TEST]                       = translate_test_instruction,
+	[IR_PUSH]                       = translate_push_instruction,
+	[IR_LOAD]                       = translate_load_instruction
 };
 
 /*
@@ -1072,6 +1094,7 @@ static char *x86_instructions[] = {
 	[X86_MOV]       = "mov",
 	[X86_PUSH]      = "push",
 	[X86_POP]       = "pop",
+	[X86_LEA]       = "lea",
 	[X86_ADD]       = "add",
 	[X86_SUB]       = "sub",
 	[X86_OR]        = "or",
@@ -1155,6 +1178,7 @@ static int x86_num_operands(int instruction)
 	case X86_CALL:
 		return 1;
 	case X86_MOV:
+	case X86_LEA:
 	case X86_ADD:
 	case X86_SUB:
 	case X86_OR:
