@@ -220,6 +220,7 @@ void translate_function(const char *fname,
 	x86_begin_function(&x86, fname);
 	x86_grow_stack(&x86, bytes);
 	x86_translate(&x86, g);
+	bytes += x86.tmp_reg.size << 2;
 	x86_shrink_stack(&x86, bytes);
 	x86_end_function(&x86);
 

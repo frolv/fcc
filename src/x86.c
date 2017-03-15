@@ -116,7 +116,7 @@ void x86_shrink_stack(struct x86_sequence *seq, size_t bytes)
 	out.instruction = X86_ADD;
 	out.size = 4;
 	out.op1.type = X86_OPERAND_CONSTANT;
-	out.op1.constant = bytes + (seq->tmp_reg.size << 2);
+	out.op1.constant = bytes;
 	out.op2.type = X86_OPERAND_GPR;
 	out.op2.gpr = X86_GPR_SP;
 	vector_append(&seq->seq, &out);
