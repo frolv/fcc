@@ -27,10 +27,16 @@ void yyerror(yyscan_t scanner, char *err)
 #define YY_TYPEDEF_YY_SCANNER_T
 typedef void * yyscan_t;
 #endif
+
+struct type_information {
+	unsigned int type_flags;
+	void *extra;
+};
 }
 
 %union {
 	unsigned int value;
+	struct type_information type;
 	struct ast_node *node;
 	struct graph_node *graph;
 }
@@ -49,11 +55,16 @@ typedef void * yyscan_t;
 
 %start translation_unit
 
-%type <value> type_specifier
-%type <value> type_specifiers
-%type <value> type_name
-%type <value> declaration_specifiers
-%type <value> pointer
+%type <type> type_specifier
+%type <type> type_specifiers
+%type <type> type_name
+%type <type> declaration_specifiers
+%type <type> pointer
+%type <type> struct_or_union
+%type <type> struct_or_union_specifier
+%type <type> struct_id
+%type <type> struct_declaration_list
+
 %type <value> unary_op
 
 %type <node> direct_declarator
@@ -100,8 +111,6 @@ translation_unit
 
 /*
  * Anything that can appear as a top-level construct in feeble C.
- * At the moment, this is functions only, but global variables
- * can be added later.
  */
 extern_decl
 	: function_def
@@ -109,7 +118,7 @@ extern_decl
 
 function_def
 	: type_specifiers { symtab_new_scope(); } declarator
-	{ symtab_add_func($3->lexeme, $1, $3->left); }
+	{ symtab_add_func($3->lexeme, &$1, $3->left); }
 	statement_block_noscope {
 		translate_function($3->lexeme, $3->left, $5);
 		/* print_asg($5); */
@@ -121,31 +130,68 @@ function_def
 type_specifiers
 	: type_specifier
 	| type_specifiers type_specifier {
-		if (FLAGS_TYPE($1) && FLAGS_TYPE($2)) {
+		if (FLAGS_TYPE($1.type_flags) && FLAGS_TYPE($2.type_flags)) {
 			/* TODO: proper error handling */
 			yyerror(scanner, "multiple types given for expression\n");
 			exit(1);
 		}
-		$$ = $1 | $2;
+		$$.type_flags = $1.type_flags | $2.type_flags;
 	}
 	;
 
 type_specifier
-	: TOKEN_VOID { $$ = TYPE_VOID; }
-	| TOKEN_CHAR { $$ = TYPE_CHAR; }
-	| TOKEN_INT { $$ = TYPE_INT; }
-	| TOKEN_SIGNED { $$ = 0; }
-	| TOKEN_UNSIGNED { $$ = QUAL_UNSIGNED; }
+	: TOKEN_VOID { $$.type_flags = TYPE_VOID; }
+	| TOKEN_CHAR { $$.type_flags = TYPE_CHAR; }
+	| TOKEN_INT { $$.type_flags = TYPE_INT; }
+	| TOKEN_SIGNED { $$.type_flags = 0; }
+	| TOKEN_UNSIGNED { $$.type_flags = QUAL_UNSIGNED; }
+	| struct_or_union_specifier
 	;
 
 type_name
 	: type_specifiers
-	| type_specifiers pointer { $$ = $1 | ($2 << 24); }
+	| type_specifiers pointer {
+		$$.type_flags = $1.type_flags | ($2.type_flags << 24);
+	}
+	;
+
+struct_or_union_specifier
+	: struct_or_union struct_id '{' struct_declaration_list '}' {
+		$$.type_flags = $1.type_flags;
+		if (!($$.extra = struct_create($2.extra, $4.extra))) {
+			exit(1);
+		}
+	}
+	| struct_or_union struct_id {
+		$$.type_flags = $1.type_flags;
+		if (!($$.extra = struct_find($2.extra))) {
+			exit(1);
+		}
+	}
+	;
+
+struct_or_union
+	: TOKEN_STRUCT { $$.type_flags = TYPE_STRUCT; }
+	;
+
+struct_id
+	: TOKEN_ID { $$.extra = strdup(yyget_text(scanner)); }
+	;
+
+struct_declaration_list
+	: declaration struct_declaration_list {
+		$$.extra = create_expr(EXPR_COMMA,
+		                       ((struct asg_node_statement *)$1)->ast,
+		                       $2.extra);
+	}
+	| declaration { $$.extra = ((struct asg_node_statement *)$1)->ast; }
 	;
 
 /* Variable or function declarator. */
 declarator
-	: pointer direct_declarator { $2->sym->flags |= ($1 << 24); $$ = $2; }
+	: pointer direct_declarator {
+		$2->sym->flags.type_flags |= ($1.type_flags << 24); $$ = $2;
+	}
 	| direct_declarator
 	;
 
@@ -165,7 +211,7 @@ parameter_list
 
 parameter_declaration
 	: type_specifiers declarator {
-		if (ast_decl_set_type($2, $1) != 0) {
+		if (ast_decl_set_type($2, &$1) != 0) {
 			free_tree($2);
 			exit(1);
 		}
@@ -187,7 +233,10 @@ statement_block_noscope
 
 block_item_list
 	: block_item
-	| block_item_list block_item { $$ = asg_append($1, $2); }
+	| block_item_list block_item {
+		if ($2)
+			$$ = asg_append($1, $2);
+	}
 	;
 
 block_item
@@ -241,23 +290,24 @@ jump_statement
 
 declaration
 	: declaration_specifiers declarator_list ';' {
-		if (ast_decl_set_type($2, $1) != 0) {
+		if (ast_decl_set_type($2, &$1) != 0) {
 			free_tree($2);
 			exit(1);
 		}
 		$$ = create_declaration($2);
 	}
+	| declaration_specifiers { $$ = NULL; }
 	;
 
 declaration_specifiers
 	: type_specifier
 	| type_specifier declaration_specifiers {
-		if (FLAGS_TYPE($1) && FLAGS_TYPE($2)) {
+		if (FLAGS_TYPE($1.type_flags) && FLAGS_TYPE($2.type_flags)) {
 			/* TODO: proper error handling */
 			yyerror(scanner, "multiple types given for expression\n");
 			exit(1);
 		}
-		$$ = $1 | $2;
+		$$.type_flags = $1.type_flags | $2.type_flags;
 	}
 	;
 
@@ -270,8 +320,8 @@ declarator_list
 
 /* how many levels of indirection are you on? */
 pointer
-	: '*' pointer { $$ = $2 + 1; }
-	| '*' { $$ = 1; }
+	: '*' pointer { $$.type_flags = $2.type_flags + 1; }
+	| '*' { $$.type_flags = 1; }
 	;
 
 /* the following expressions appear in order of operator precedence */
@@ -375,7 +425,7 @@ multiplicative_expr
 cast_expr
 	: unary_expr
 	| '(' type_name ')' cast_expr {
-		if (ast_cast($4, $2) != 0) {
+		if (ast_cast($4, &$2) != 0) {
 			yyerror(scanner, "invalid cast");
 			exit(1);
 		}

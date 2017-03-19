@@ -37,7 +37,7 @@ struct ir_operand {
 struct ir_instruction {
 	uint16_t tag;
 	int16_t target;
-	unsigned int type_flags;
+	struct type_information type;
 	struct ir_operand lhs;
 	struct ir_operand rhs;
 };

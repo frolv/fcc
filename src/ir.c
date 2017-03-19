@@ -54,7 +54,7 @@ static int ir_parse_lvalue_deref(struct ir_sequence *ir,
 
 		inst.tag = IR_LOAD;
 		inst.target = tmpreg;
-		inst.type_flags = expr->expr_flags;
+		memcpy(&inst.type, &expr->expr_flags, sizeof inst.type);
 		inst.lhs.op_type = IR_OPERAND_AST_NODE;
 		inst.lhs.node = expr;
 		vector_append(&ir->seq, &inst);
@@ -112,8 +112,11 @@ static int ir_read_ast(struct ir_sequence *ir,
 	struct ir_instruction inst;
 	int tmp;
 
+	if (IS_TERM(expr))
+		return -1;
+
 	inst.tag = expr->tag;
-	inst.type_flags = expr->expr_flags;
+	memcpy(&inst.type, &expr->expr_flags, sizeof inst.type);
 
 	if (expr->tag == EXPR_FUNC) {
 		inst.lhs.op_type = IR_OPERAND_AST_NODE;
@@ -230,7 +233,8 @@ static void ir_compare_zero(struct ir_sequence *ir, int term, void *item)
 
 	inst.tag = IR_TEST;
 	inst.target = -1;
-	inst.type_flags = TYPE_INT;
+	inst.type.type_flags = TYPE_INT;
+	inst.type.extra = NULL;
 	if (term) {
 		inst.lhs.op_type = IR_OPERAND_AST_NODE;
 		inst.lhs.node = item;

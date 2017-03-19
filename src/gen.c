@@ -97,7 +97,7 @@ static void add_locals(struct local_vars *locals, struct ast_node *decl)
 {
 	/* tag is guaranteed to be IDENTIFIER or COMMA */
 	if (decl->tag == NODE_IDENTIFIER) {
-		local_add(locals, decl->lexeme, decl->expr_flags);
+		local_add(locals, decl->lexeme, &decl->expr_flags);
 	} else {
 		add_locals(locals, decl->left);
 		add_locals(locals, decl->right);
@@ -172,7 +172,7 @@ static size_t read_locals(const char *fname,
 			continue;
 		}
 
-		size = type_size(l->type);
+		size = type_size(&l->type);
 		if (!ALIGNED(nbytes, size))
 			nbytes = ALIGN(nbytes, size);
 

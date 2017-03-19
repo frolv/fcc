@@ -8,11 +8,23 @@
 
 #include <stddef.h>
 
+#include "ast.h"
+#include "vector.h"
+#include "uthash.h"
+
 enum {
 	TYPE_INT = 1,
 	TYPE_CHAR,
 	TYPE_VOID,
-	TYPE_STRLIT
+	TYPE_STRLIT,
+	TYPE_STRUCT
+};
+
+struct struct_struct {
+	const char *name;
+	size_t size;
+	struct vector members;
+	UT_hash_handle hh;
 };
 
 /*
@@ -36,6 +48,9 @@ enum {
 	(FLAGS_TYPE(x) == TYPE_INT || FLAGS_TYPE(x) == TYPE_CHAR)
 #define FLAGS_INDIRECTION(x) ((x) >> FLAGS_INDIRECTION_SHIFT)
 
-size_t type_size(unsigned int type_flags);
+size_t type_size(struct type_information *type);
+
+struct struct_struct *struct_create(const char *name, struct ast_node *members);
+struct struct_struct *struct_find(const char *name);
 
 #endif /* FCC_TYPES_H */

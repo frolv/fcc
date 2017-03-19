@@ -34,7 +34,7 @@ struct ast_node *create_node(int tag, char *lexeme)
 			exit(1);
 		}
 		n->lexeme = strdup(n->sym->id);
-		n->expr_flags = n->sym->flags;
+		memcpy(&n->expr_flags, &n->sym->flags, sizeof n->expr_flags);
 		break;
 	case NODE_NEWID:
 		n->tag = NODE_IDENTIFIER;
@@ -43,17 +43,17 @@ struct ast_node *create_node(int tag, char *lexeme)
 			error_declared(lexeme);
 			exit(1);
 		}
-		n->sym = symtab_add(lexeme, TYPE_INT);
+		n->sym = symtab_add(lexeme, NULL);
 		n->lexeme = strdup(n->sym->id);
-		n->expr_flags = n->sym->flags;
+		memcpy(&n->expr_flags, &n->sym->flags, sizeof n->expr_flags);
 		break;
 	case NODE_CONSTANT:
 		n->sym = NULL;
 
-		n->expr_flags = TYPE_INT;
+		n->expr_flags.type_flags = TYPE_INT;
 		/* hex, octal and unsigned constants */
 		if ((*lexeme == '0' && lexeme[1]) || strpbrk(lexeme, "uU"))
-			n->expr_flags |= QUAL_UNSIGNED;
+			n->expr_flags.type_flags |= QUAL_UNSIGNED;
 
 		if (*lexeme == '\'')
 			n->value = char_const_val(lexeme);
@@ -63,7 +63,7 @@ struct ast_node *create_node(int tag, char *lexeme)
 		break;
 	case NODE_STRLIT:
 		n->lexeme = strdup(lexeme);
-		n->expr_flags = TYPE_STRLIT;
+		n->expr_flags.type_flags = TYPE_STRLIT;
 		break;
 	default:
 		break;
@@ -85,8 +85,8 @@ struct ast_node *create_expr(int expr, struct ast_node *lhs, struct ast_node *rh
 	struct ast_node *n;
 
 	if (expr == EXPR_UNARY_PLUS) {
-		if (!FLAGS_IS_INTEGER(lhs->expr_flags)
-		    || FLAGS_IS_PTR(lhs->expr_flags)) {
+		if (!FLAGS_IS_INTEGER(lhs->expr_flags.type_flags)
+		    || FLAGS_IS_PTR(lhs->expr_flags.type_flags)) {
 			error_incompatible_uplus(lhs);
 			exit(1);
 		}
@@ -133,38 +133,42 @@ void free_tree(struct ast_node *root)
  * Set the types of all identifiers in AST declaration statement
  * starting at `root` to `flags`.
  */
-int ast_decl_set_type(struct ast_node *root, unsigned int type_flags)
+int ast_decl_set_type(struct ast_node *root, struct type_information *type)
 {
 	/*
 	 * Variables can be declared without an explicit type,
 	 * e.g. `unsigned i`, in which case the type is assumed
 	 * to be int.
 	 */
-	if (!FLAGS_TYPE(type_flags))
-		type_flags |= TYPE_INT;
+	if (!FLAGS_TYPE(type->type_flags))
+		type->type_flags |= TYPE_INT;
 
 	if (root->tag == NODE_IDENTIFIER) {
 		/* Can't declare a variable of type void. */
-		if (FLAGS_TYPE(type_flags) == TYPE_VOID &&
-		    !FLAGS_IS_PTR(root->sym->flags)) {
+		if (FLAGS_TYPE(type->type_flags) == TYPE_VOID &&
+		    !FLAGS_IS_PTR(root->sym->flags.type_flags)) {
 			fprintf(stderr, "\x1B[1;31merror:\x1B[0;37m "
 			        "%s declared as type `void'\n",
 			        root->lexeme);
 			return 1;
 		}
 
-		root->sym->flags = (root->sym->flags & 0xFF000000) | type_flags;
-		root->expr_flags = root->sym->flags;
+		root->sym->flags.type_flags =
+			(root->sym->flags.type_flags & 0xFF000000)
+			| type->type_flags;
+		root->sym->flags.extra = type->extra;
+		memcpy(&root->expr_flags, &root->sym->flags,
+		       sizeof root->expr_flags);
 	} else if (root->tag == EXPR_COMMA) {
-		root->expr_flags = type_flags;
+		memcpy(&root->expr_flags, type, sizeof root->expr_flags);
 	}
 
 	if (root->left) {
-		if (ast_decl_set_type(root->left, type_flags) != 0)
+		if (ast_decl_set_type(root->left, type) != 0)
 			return 1;
 	}
 	if (root->right) {
-		if (ast_decl_set_type(root->right, type_flags) != 0)
+		if (ast_decl_set_type(root->right, type) != 0)
 			return 1;
 	}
 
@@ -175,41 +179,41 @@ int ast_decl_set_type(struct ast_node *root, unsigned int type_flags)
  * ast_cast:
  * Cast the expression `expr` to the type specified by `type_flags`.
  */
-int ast_cast(struct ast_node *expr, unsigned int type_flags)
+int ast_cast(struct ast_node *expr, struct type_information *type)
 {
 	int expr_flags;
 
-	expr_flags = expr->expr_flags;
+	expr_flags = expr->expr_flags.type_flags;
 
-	if (!FLAGS_TYPE(type_flags))
-		type_flags |= TYPE_INT;
+	if (!FLAGS_TYPE(type->type_flags))
+		type->type_flags |= TYPE_INT;
 
-	if (FLAGS_IS_PTR(type_flags)) {
+	if (FLAGS_IS_PTR(type->type_flags)) {
 		/* A pointer type can be cast to any other pointer type. */
 		if (FLAGS_IS_PTR(expr_flags)) {
-			expr->expr_flags = type_flags;
+			memcpy(&expr->expr_flags, type, sizeof *type);
 			return 0;
 		}
 
 		/* An integer type can be cast to any pointer type. */
 		if (FLAGS_IS_INTEGER(expr_flags)) {
-			expr->expr_flags = type_flags;
+			memcpy(&expr->expr_flags, type, sizeof *type);
 			return 0;
 		}
-	} else if (FLAGS_IS_INTEGER(type_flags)) {
+	} else if (FLAGS_IS_INTEGER(type->type_flags)) {
 		/* A pointer can be cast to an integer type. */
 		if (FLAGS_IS_PTR(expr_flags)) {
-			expr->expr_flags = type_flags;
+			memcpy(&expr->expr_flags, type, sizeof *type);
 			return 0;
 		}
 
 		/* An integer type can be cast to another integer type. */
 		if (FLAGS_IS_INTEGER(expr_flags)) {
-			expr->expr_flags = type_flags;
+			memcpy(&expr->expr_flags, type, sizeof *type);
 			return 0;
 		}
-	} else if (FLAGS_TYPE(type_flags) == TYPE_VOID) {
-		expr->expr_flags = type_flags;
+	} else if (FLAGS_TYPE(type->type_flags) == TYPE_VOID) {
+		memcpy(&expr->expr_flags, type, sizeof *type);
 		return 0;
 	}
 
@@ -248,8 +252,9 @@ static int char_const_val(char *lexeme)
  */
 static int is_lvalue(struct ast_node *expr)
 {
-	return (expr->tag == NODE_IDENTIFIER && !FLAGS_IS_FUNC(expr->expr_flags))
-		|| expr->tag == EXPR_DEREFERENCE;
+	return (expr->tag == NODE_IDENTIFIER &&
+	        !FLAGS_IS_FUNC(expr->expr_flags.type_flags))
+	       || expr->tag == EXPR_DEREFERENCE;
 }
 
 /*
@@ -260,20 +265,22 @@ static int is_lvalue(struct ast_node *expr)
 static void pointer_additive_scale(struct ast_node *expr)
 {
 	struct ast_node **add, *tmp;
-	unsigned int flags, ind;
+	struct type_information flags;
+	unsigned int ind;
 	size_t ptr_size;
 
-	if (FLAGS_IS_PTR(expr->left->expr_flags)) {
-		flags = expr->left->expr_flags;
+	if (FLAGS_IS_PTR(expr->left->expr_flags.type_flags)) {
+		memcpy(&flags, &expr->left->expr_flags, sizeof flags);
 		add = &expr->right;
 	} else {
-		flags = expr->right->expr_flags;
+		memcpy(&flags, &expr->right->expr_flags, sizeof flags);
 		add = &expr->left;
 	}
 
-	ind = FLAGS_INDIRECTION(flags) - 1;
-	flags = (flags & 0x00FFFFFF) | (ind << FLAGS_INDIRECTION_SHIFT);
-	ptr_size = type_size(flags);
+	ind = FLAGS_INDIRECTION(flags.type_flags) - 1;
+	flags.type_flags = (flags.type_flags & 0x00FFFFFF)
+		| (ind << FLAGS_INDIRECTION_SHIFT);
+	ptr_size = type_size(&flags);
 	if (ptr_size == 1)
 		return;
 
@@ -282,7 +289,8 @@ static void pointer_additive_scale(struct ast_node *expr)
 	} else {
 		tmp = calloc(1, sizeof *tmp);
 		tmp->tag = NODE_CONSTANT;
-		tmp->expr_flags = TYPE_INT | QUAL_UNSIGNED;
+		tmp->expr_flags.type_flags = TYPE_INT | QUAL_UNSIGNED;
+		tmp->expr_flags.extra = NULL;
 		tmp->value = ptr_size;
 
 		*add = create_expr(EXPR_MULT, *add, tmp);
@@ -299,8 +307,8 @@ static void check_assign_type(struct ast_node *expr)
 	unsigned int lhs_flags, rhs_flags;
 	const unsigned int void_star = TYPE_VOID | (1 << 24);
 
-	lhs_flags = expr->left->expr_flags;
-	rhs_flags = expr->right->expr_flags;
+	lhs_flags = expr->left->expr_flags.type_flags;
+	rhs_flags = expr->right->expr_flags.type_flags;
 
 	if (!is_lvalue(expr->left)) {
 		error_assign_type(expr->left);
@@ -318,19 +326,19 @@ static void check_assign_type(struct ast_node *expr)
 			    rhs_flags != void_star)
 				warning_imcompatible_ptr_assn(expr);
 
-			expr->expr_flags = lhs_flags;
+			expr->expr_flags.type_flags = lhs_flags;
 		} else if (FLAGS_IS_INTEGER(rhs_flags)) {
 			/*
 			 * Integer types can be assigned to pointers, but
 			 * the value should be cast to indicate intent.
 			 */
 			warning_int_assign(expr);
-			expr->expr_flags = lhs_flags;
+			expr->expr_flags.type_flags = lhs_flags;
 		} else if (FLAGS_TYPE(lhs_flags) == TYPE_CHAR &&
 		           FLAGS_INDIRECTION(lhs_flags) == 1 &&
 		           FLAGS_TYPE(rhs_flags) == TYPE_STRLIT) {
 			/* String literal can be assigned to `char *`. */
-			expr->expr_flags = lhs_flags;
+			expr->expr_flags.type_flags = lhs_flags;
 		} else {
 			goto err_incompatible;
 		}
@@ -340,11 +348,11 @@ static void check_assign_type(struct ast_node *expr)
 			goto err_incompatible;
 
 		warning_ptr_assign(expr);
-		expr->expr_flags = lhs_flags;
+		expr->expr_flags.type_flags = lhs_flags;
 	}
 
 	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
-		expr->expr_flags = lhs_flags;
+		expr->expr_flags.type_flags = lhs_flags;
 		return;
 	}
 
@@ -361,16 +369,16 @@ static void check_boolean_type(struct ast_node *expr)
 {
 	unsigned int lhs_flags, rhs_flags;
 
-	lhs_flags = expr->left->expr_flags;
+	lhs_flags = expr->left->expr_flags.type_flags;
 
 	if (FLAGS_IS_INTEGER(lhs_flags) || FLAGS_IS_PTR(lhs_flags)) {
 		if (expr->right) {
-			rhs_flags = expr->right->expr_flags;
+			rhs_flags = expr->right->expr_flags.type_flags;
 			if (!FLAGS_IS_INTEGER(rhs_flags) &&
 			    !FLAGS_IS_PTR(rhs_flags))
 				goto err_incompatible;
 		}
-		expr->expr_flags = TYPE_INT;
+		expr->expr_flags.type_flags = TYPE_INT;
 		return;
 	}
 
@@ -414,30 +422,30 @@ static void check_equality_type(struct ast_node *expr)
 {
 	unsigned int lhs_flags, rhs_flags;
 
-	lhs_flags = expr->left->expr_flags;
-	rhs_flags = expr->right->expr_flags;
+	lhs_flags = expr->left->expr_flags.type_flags;
+	rhs_flags = expr->right->expr_flags.type_flags;
 
 	if (FLAGS_IS_PTR(lhs_flags) && FLAGS_IS_PTR(rhs_flags)) {
 		if (lhs_flags != rhs_flags)
 			warning_imcompatible_ptr_cmp(expr);
-		expr->expr_flags = TYPE_INT;
+		expr->expr_flags.type_flags = TYPE_INT;
 		return;
 	} else if (FLAGS_IS_PTR(lhs_flags)) {
 		if (!FLAGS_IS_INTEGER(rhs_flags))
 			goto err_incompatible;
 
 		warning_ptr_int_cmp(expr);
-		expr->expr_flags = TYPE_INT;
+		expr->expr_flags.type_flags = TYPE_INT;
 		return;
 	} else if (FLAGS_IS_PTR(rhs_flags)) {
 		if (!FLAGS_IS_INTEGER(lhs_flags))
 			goto err_incompatible;
 
 		warning_ptr_int_cmp(expr);
-		expr->expr_flags = TYPE_INT;
+		expr->expr_flags.type_flags = TYPE_INT;
 		return;
 	} else if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
-		expr->expr_flags = TYPE_INT;
+		expr->expr_flags.type_flags = TYPE_INT;
 		return;
 	}
 
@@ -454,24 +462,25 @@ static void check_bitop_type(struct ast_node *expr)
 {
 	unsigned int lhs_flags, rhs_flags;
 
-	lhs_flags = expr->left->expr_flags;
+	lhs_flags = expr->left->expr_flags.type_flags;
 
 	if (expr->tag == EXPR_NOT) {
 		if (FLAGS_IS_PTR(lhs_flags) || !FLAGS_IS_INTEGER(lhs_flags))
 			goto err_incompatible;
 
-		expr->expr_flags = lhs_flags;
+		expr->expr_flags.type_flags = lhs_flags;
 		return;
 	}
 
-	rhs_flags = expr->right->expr_flags;
+	rhs_flags = expr->right->expr_flags.type_flags;
 
 	if (FLAGS_IS_PTR(lhs_flags) || FLAGS_IS_PTR(rhs_flags))
 		goto err_incompatible;
 
 	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
 		/* Bitwise operations can only be performed on integer types. */
-		expr->expr_flags = integer_type_convert(lhs_flags, rhs_flags);
+		expr->expr_flags.type_flags = integer_type_convert(lhs_flags,
+								   rhs_flags);
 		return;
 	}
 
@@ -489,8 +498,8 @@ static void check_additive_type(struct ast_node *expr)
 {
 	unsigned int lhs_flags, rhs_flags;
 
-	lhs_flags = expr->left->expr_flags;
-	rhs_flags = expr->right->expr_flags;
+	lhs_flags = expr->left->expr_flags.type_flags;
+	rhs_flags = expr->right->expr_flags.type_flags;
 
 	if (FLAGS_IS_PTR(lhs_flags) && FLAGS_IS_PTR(rhs_flags)) {
 		/*
@@ -501,7 +510,7 @@ static void check_additive_type(struct ast_node *expr)
 		 * but we don't support that.)
 		 */
 		if (expr->tag == EXPR_SUB && lhs_flags == rhs_flags) {
-			expr->expr_flags = TYPE_INT;
+			expr->expr_flags.type_flags = TYPE_INT;
 			return;
 		} else {
 			goto err_incompatible;
@@ -511,7 +520,7 @@ static void check_additive_type(struct ast_node *expr)
 		/* An integer can be added to or subtracted from a pointer. */
 		if (FLAGS_IS_INTEGER(rhs_flags) &&
 		    FLAGS_TYPE(lhs_flags) != TYPE_VOID) {
-			expr->expr_flags = lhs_flags;
+			expr->expr_flags.type_flags = lhs_flags;
 			pointer_additive_scale(expr);
 			return;
 		} else {
@@ -522,7 +531,7 @@ static void check_additive_type(struct ast_node *expr)
 		/* A pointer can be added to an integer, but not subtracted. */
 		if (expr->tag == EXPR_ADD && FLAGS_IS_INTEGER(lhs_flags) &&
 		    FLAGS_TYPE(rhs_flags) != TYPE_VOID) {
-			expr->expr_flags = rhs_flags;
+			expr->expr_flags.type_flags = rhs_flags;
 			pointer_additive_scale(expr);
 			return;
 		} else {
@@ -531,7 +540,8 @@ static void check_additive_type(struct ast_node *expr)
 	}
 	if (FLAGS_IS_INTEGER(lhs_flags) && FLAGS_IS_INTEGER(rhs_flags)) {
 		/* Two integer types can be added or subtracted. */
-		expr->expr_flags = integer_type_convert(lhs_flags, rhs_flags);
+		expr->expr_flags.type_flags = integer_type_convert(lhs_flags,
+								   rhs_flags);
 		return;
 	}
 
@@ -549,8 +559,8 @@ static void check_multiplicative_type(struct ast_node *expr)
 {
 	unsigned int lhs_flags, rhs_flags;
 
-	lhs_flags = expr->left->expr_flags;
-	rhs_flags = expr->right->expr_flags;
+	lhs_flags = expr->left->expr_flags.type_flags;
+	rhs_flags = expr->right->expr_flags.type_flags;
 
 	if (FLAGS_IS_PTR(lhs_flags) || FLAGS_IS_PTR(rhs_flags))
 		goto err_incompatible;
@@ -560,7 +570,8 @@ static void check_multiplicative_type(struct ast_node *expr)
 		 * Multiplicative operations can only
 		 * be performed on integer types.
 		 */
-		expr->expr_flags = integer_type_convert(lhs_flags, rhs_flags);
+		expr->expr_flags.type_flags = integer_type_convert(lhs_flags,
+								   rhs_flags);
 		return;
 	}
 
@@ -583,10 +594,11 @@ static void check_address_type(struct ast_node *expr)
 		exit(1);
 	}
 
-	expr->expr_flags = expr->left->expr_flags;
-	indirection = (expr->expr_flags >> 24) + 1;
-	expr->expr_flags &= 0x00FFFFFF;
-	expr->expr_flags |= indirection << 24;
+	memcpy(&expr->expr_flags, &expr->left->expr_flags,
+	       sizeof expr->expr_flags);
+	indirection = (expr->expr_flags.type_flags >> 24) + 1;
+	expr->expr_flags.type_flags &= 0x00FFFFFF;
+	expr->expr_flags.type_flags |= indirection << 24;
 }
 
 /*
@@ -598,7 +610,7 @@ static void check_dereference_type(struct ast_node *expr)
 {
 	unsigned int indirection, flags;
 
-	flags = expr->left->expr_flags;
+	flags = expr->left->expr_flags.type_flags;
 
 	/*
 	 * If the operand is not a pointer type, or if it is a singly
@@ -610,10 +622,11 @@ static void check_dereference_type(struct ast_node *expr)
 		exit(1);
 	}
 
-	expr->expr_flags = expr->left->expr_flags;
-	indirection = FLAGS_INDIRECTION(expr->expr_flags) - 1;
-	expr->expr_flags &= 0x00FFFFFF;
-	expr->expr_flags |= indirection << FLAGS_INDIRECTION_SHIFT;
+	memcpy(&expr->expr_flags, &expr->left->expr_flags,
+	       sizeof expr->expr_flags);
+	indirection = FLAGS_INDIRECTION(expr->expr_flags.type_flags) - 1;
+	expr->expr_flags.type_flags &= 0x00FFFFFF;
+	expr->expr_flags.type_flags |= indirection << FLAGS_INDIRECTION_SHIFT;
 }
 
 /*
@@ -622,18 +635,19 @@ static void check_dereference_type(struct ast_node *expr)
  */
 static void check_unary_type(struct ast_node *expr)
 {
-	unsigned int lhs_type = expr->left->expr_flags;
+	unsigned int lhs_type = expr->left->expr_flags.type_flags;
 
 	if (!FLAGS_IS_INTEGER(lhs_type) || FLAGS_IS_PTR(lhs_type)) {
 		error_incompatible_op_types(expr);
 		exit(1);
 	}
-	expr->expr_flags = lhs_type;
+	expr->expr_flags.type_flags = lhs_type;
 }
 
 static void check_func_type(struct ast_node *expr)
 {
-	expr->expr_flags = expr->left->expr_flags;
+	memcpy(&expr->expr_flags, &expr->left->expr_flags,
+	       sizeof expr->expr_flags);
 }
 
 static void (*expr_type_func[])(struct ast_node *) = {
@@ -673,7 +687,8 @@ static void check_expr_type(struct ast_node *expr)
 {
 	switch (expr->tag) {
 	case EXPR_COMMA:
-		expr->expr_flags = expr->right->expr_flags;
+		memcpy(&expr->expr_flags, &expr->right->expr_flags,
+		       sizeof expr->expr_flags);
 		break;
 	default:
 		expr_type_func[expr->tag](expr);
@@ -762,21 +777,26 @@ static int combine_constants(int op, struct ast_node *lhs, struct ast_node *rhs)
 
 static void print_type(FILE *f, struct ast_node *expr)
 {
+	unsigned int flags;
 	int i;
 
+	flags = expr->expr_flags.type_flags;
 	putc('[', f);
-	if (expr->expr_flags & QUAL_UNSIGNED)
+	if (flags & QUAL_UNSIGNED)
 		fprintf(f, "unsigned ");
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_INT)
+	if (FLAGS_TYPE(flags) == TYPE_INT)
 		fprintf(f, "int");
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_CHAR)
+	else if (FLAGS_TYPE(flags) == TYPE_CHAR)
 		fprintf(f, "char");
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_VOID)
+	else if (FLAGS_TYPE(flags) == TYPE_VOID)
 		fprintf(f, "void");
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_STRLIT)
+	else if (FLAGS_TYPE(flags) == TYPE_STRLIT)
 		fprintf(f, "const char[%lu]", strlen(expr->lexeme) - 1);
+	else if (FLAGS_TYPE(flags) == TYPE_STRUCT)
+		fprintf(f, "struct %s",
+		        ((struct struct_struct *)expr->expr_flags.extra)->name);
 
-	i = FLAGS_INDIRECTION(expr->expr_flags);
+	i = FLAGS_INDIRECTION(flags);
 	if (i) {
 		fputc(' ', f);
 		while (i--)

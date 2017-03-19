@@ -194,8 +194,8 @@ static void ir_to_x86_operand(struct x86_sequence *seq,
 			x->offset.gpr = X86_GPR_BP;
 			break;
 		case NODE_CONSTANT:
-			if (i->node->expr_flags & QUAL_UNSIGNED ||
-			    FLAGS_IS_PTR(i->node->expr_flags))
+			if (i->node->expr_flags.type_flags & QUAL_UNSIGNED ||
+			    FLAGS_IS_PTR(i->node->expr_flags.type_flags))
 				x->type = X86_OPERAND_UCONSTANT;
 			else
 				x->type = X86_OPERAND_CONSTANT;
@@ -226,7 +226,7 @@ static int x86_load_value(struct x86_sequence *seq,
 		gpr = X86_GPR_AX;
 
 	out.instruction = X86_MOV;
-	out.size = type_size(val->node->expr_flags);
+	out.size = type_size(&val->node->expr_flags);
 	ir_to_x86_operand(seq, val, &out.op1);
 	out.op2.type = X86_OPERAND_GPR;
 	out.op2.gpr = gpr;
@@ -306,7 +306,7 @@ static void translate_assign_instruction(struct x86_sequence *seq,
 	int gpr;
 
 	out.instruction = X86_MOV;
-	out.size = type_size(i->type_flags);
+	out.size = type_size(&i->type);
 	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
 		ir_to_x86_operand(seq, &i->lhs, &out.op2);
 	} else {
@@ -352,7 +352,7 @@ static void __translate_generic(struct x86_sequence *seq,
 	int ax, reg;
 
 	out.instruction = instruction;
-	out.size = type_size(i->type_flags);
+	out.size = type_size(&i->type);
 	ax = 0;
 
 	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
@@ -468,9 +468,9 @@ static void translate_shift_instruction(struct x86_sequence *seq,
 
 	out.instruction = i->tag == EXPR_LSHIFT
 	                  ? X86_SHL
-	                  : (i->type_flags & QUAL_UNSIGNED
+	                  : (i->type.type_flags & QUAL_UNSIGNED
 	                     ? X86_SHR : X86_SAR);
-	out.size = type_size(i->type_flags);
+	out.size = type_size(&i->type);
 
 	/* Number of bits to shift by is stored in cl (low byte of ecx) */
 	if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
@@ -643,7 +643,7 @@ static void translate_address_instruction(struct x86_sequence *seq,
 	struct x86_instruction out;
 
 	out.instruction = X86_LEA;
-	out.size = type_size(i->type_flags);
+	out.size = type_size(&i->type);
 	ir_to_x86_operand(seq, &i->lhs, &out.op1);
 	out.op2.type = X86_OPERAND_GPR;
 	out.op2.gpr = X86_GPR_AX;
@@ -671,7 +671,7 @@ static void translate_dereference_instruction(struct x86_sequence *seq,
 		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
 
 	out.instruction = X86_MOV;
-	out.size = type_size(i->type_flags);
+	out.size = type_size(&i->type);
 	out.op1.type = X86_OPERAND_OFFSET;
 	out.op1.offset.off = 0;
 	out.op1.offset.gpr = gpr;
@@ -1066,7 +1066,6 @@ void x86_translate(struct x86_sequence *seq, struct graph_node *g)
 		case ASG_NODE_STATEMENT:
 			ir_parse_expr(&ir, ((struct asg_node_statement *)g)->ast,
 			              0);
-			ir_print_sequence(&ir);
 			x86_translate_expr(seq, &ir, 0);
 			break;
 		case ASG_NODE_CONDITIONAL:

@@ -79,21 +79,27 @@ static char *op_sym[] = {
 
 static void err_print_type(struct ast_node *expr)
 {
+	unsigned int flags;
 	int i;
 
-	if (expr->expr_flags & QUAL_UNSIGNED)
+	flags = expr->expr_flags.type_flags;
+	if (flags & QUAL_UNSIGNED)
 		fprintf(stderr, "unsigned ");
 
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_INT)
+	if (FLAGS_TYPE(flags) == TYPE_INT)
 		fprintf(stderr, "int");
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_CHAR)
+	else if (FLAGS_TYPE(flags) == TYPE_CHAR)
 		fprintf(stderr, "char");
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_VOID)
+	else if (FLAGS_TYPE(flags) == TYPE_VOID)
 		fprintf(stderr, "void");
-	if (FLAGS_TYPE(expr->expr_flags) == TYPE_STRLIT)
+	else if (FLAGS_TYPE(flags) == TYPE_STRLIT)
 		fprintf(stderr, "const char[%lu]", strlen(expr->lexeme) - 1);
+	else if (FLAGS_TYPE(flags) == TYPE_STRUCT)
+		fprintf(stderr, "struct %s",
+		        ((struct struct_struct *)expr->expr_flags.extra)->name);
 
-	i = FLAGS_INDIRECTION(expr->expr_flags);
+
+	i = FLAGS_INDIRECTION(flags);
 	if (i) {
 		fputc(' ', stderr);
 		while (i--)

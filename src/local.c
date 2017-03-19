@@ -17,13 +17,14 @@ void local_destroy(struct local_vars *locals)
 	vector_destroy(&locals->locals);
 }
 
-void local_add(struct local_vars *locals, const char *name, unsigned int type)
+void local_add(struct local_vars *locals, const char *name,
+               struct type_information *type)
 {
 	struct local l;
 
 	memset(&l, 0, sizeof l);
 	l.name = name;
-	l.type = type;
+	memcpy(&l.type, type, sizeof *type);
 	vector_append(&locals->locals, &l);
 }
 

@@ -47,7 +47,7 @@ struct symbol *symtab_entry_scope(char *id)
  * Add a new symbol to the current symbol table
  * with the specified ID and type flags.
  */
-struct symbol *symtab_add(char *id, unsigned int flags)
+struct symbol *symtab_add(char *id, struct type_information *flags)
 {
 	struct symbol *s;
 
@@ -55,7 +55,12 @@ struct symbol *symtab_add(char *id, unsigned int flags)
 	if (!s) {
 		s = malloc(sizeof *s);
 		s->id = strdup(id);
-		s->flags = flags;
+		if (flags) {
+			memcpy(&s->flags, flags, sizeof *flags);
+		} else {
+			s->flags.type_flags = TYPE_INT;
+			s->flags.extra = NULL;
+		}
 		s->extra = NULL;
 
 		HASH_ADD_KEYPTR(hh, symtab_stack[ntables - 1],
@@ -71,7 +76,8 @@ static void create_param_array(struct symbol *s, struct ast_node *params);
  * Add a symbol for a function to the symbol table.
  * Params is the AST specifiying the function's parameter declarations.
  */
-struct symbol *symtab_add_func(char *id, unsigned int flags, void *params)
+struct symbol *symtab_add_func(char *id, struct type_information *flags,
+                               void *params)
 {
 	struct symbol *s;
 
@@ -79,7 +85,13 @@ struct symbol *symtab_add_func(char *id, unsigned int flags, void *params)
 	if (!s) {
 		s = malloc(sizeof *s);
 		s->id = strdup(id);
-		s->flags = flags | PROPERTY_FUNC;
+		if (flags) {
+			memcpy(&s->flags, flags, sizeof *flags);
+		} else {
+			s->flags.type_flags = TYPE_INT;
+			s->flags.extra = NULL;
+		}
+		s->flags.type_flags |= PROPERTY_FUNC;
 		create_param_array(s, params);
 
 		HASH_ADD_KEYPTR(hh, symtab_stack[0], s->id, strlen(s->id), s);

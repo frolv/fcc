@@ -8,15 +8,16 @@
 #include <stdlib.h>
 
 #include "vector.h"
+#include "types.h"
 
 #define LFLAGS_USED 0x1
 
 /* A local variable within a function. */
 struct local {
-	const char      *name;  /* variable name */
-	off_t           offset; /* offset from base pointer */
-	unsigned int    type;   /* type flags; see types.h */
-	unsigned int    flags;  /* various flags */
+	const char              *name;  /* variable name */
+	off_t                   offset; /* offset from base pointer */
+	struct type_information type;   /* type flags; see types.h */
+	unsigned int            flags;  /* various flags */
 };
 
 struct local_vars {
@@ -26,7 +27,8 @@ struct local_vars {
 void local_init(struct local_vars *locals);
 void local_destroy(struct local_vars *locals);
 
-void local_add(struct local_vars *locals, const char *name, unsigned int type);
+void local_add(struct local_vars *locals, const char *name,
+               struct type_information *type);
 void local_mark_used(struct local_vars *locals, const char *name);
 struct local *local_find(struct local_vars *locals, const char *name);
 
