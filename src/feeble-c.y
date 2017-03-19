@@ -8,6 +8,7 @@
 
 #include "asg.h"
 #include "ast.h"
+#include "error.h"
 #include "fcc.h"
 #include "gen.h"
 #include "parse.h"
@@ -156,15 +157,18 @@ type_name
 	;
 
 struct_or_union_specifier
-	: struct_or_union struct_id '{' struct_declaration_list '}' {
+	: struct_or_union struct_id '{' { symtab_new_scope(); }
+	  struct_declaration_list { symtab_destroy_scope(); } '}' {
 		$$.type_flags = $1.type_flags;
-		if (!($$.extra = struct_create($2.extra, $4.extra))) {
+		if (!($$.extra = struct_create($2.extra, $5.extra))) {
+			error_struct_redefinition($2.extra);
 			exit(1);
 		}
 	}
 	| struct_or_union struct_id {
 		$$.type_flags = $1.type_flags;
 		if (!($$.extra = struct_find($2.extra))) {
+			error_struct_undefined($2.extra);
 			exit(1);
 		}
 	}

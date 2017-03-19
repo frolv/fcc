@@ -19,10 +19,12 @@ size_t type_size(struct type_information *type)
 	unsigned int t;
 
 	t = FLAGS_TYPE(type->type_flags);
-	if (t == TYPE_STRLIT || t == TYPE_VOID)
+	if (t == TYPE_STRLIT)
 		return 0;
 	else if (FLAGS_IS_PTR(type->type_flags))
 	         return 4;
+	else if (t == TYPE_VOID)
+		return 0;
 	else if (t == TYPE_STRUCT)
 		return ((struct struct_struct *)type->extra)->size;
 	else
@@ -37,8 +39,8 @@ static void struct_add_members(struct struct_struct *s, struct ast_node *ast)
 		return;
 	} else if (ast->tag == NODE_IDENTIFIER) {
 		size = type_size(&ast->expr_flags);
-		if (!ALIGNED(size, 4))
-			size = ALIGN(size, 4);
+		if (!ALIGNED(s->size, size))
+			s->size = ALIGN(s->size, size);
 		s->size += size;
 	} else if (ast->tag == EXPR_COMMA) {
 		struct_add_members(s, ast->left);
@@ -49,6 +51,10 @@ static void struct_add_members(struct struct_struct *s, struct ast_node *ast)
 struct struct_struct *struct_create(const char *name, struct ast_node *members)
 {
 	struct struct_struct *s;
+
+	HASH_FIND_STR(structs, name, s);
+	if (s)
+		return NULL;
 
 	s = malloc(sizeof *s);
 	s->name = name;

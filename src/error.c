@@ -153,14 +153,24 @@ void error_address_type(struct ast_node *expr)
 	(void)expr;
 }
 
-void error_undeclared(char *id)
+void error_undeclared(const char *id)
 {
 	PUTERR("undeclared identifier `%s'\n", id);
 }
 
-void error_declared(char *id)
+void error_declared(const char *id)
 {
 	PUTERR("`%s' has already been declared in this scope\n", id);
+}
+
+void error_struct_redefinition(const char *name)
+{
+	PUTERR("redefinition of `struct %s'\n", name);
+}
+
+void error_struct_undefined(const char *name)
+{
+	PUTERR("type `struct %s' is unknown\n", name);
 }
 
 void warning_imcompatible_ptr_assn(struct ast_node *expr)

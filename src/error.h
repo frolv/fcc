@@ -12,8 +12,10 @@ void error_incompatible_op_types(struct ast_node *expr);
 void error_incompatible_uplus(struct ast_node *operand);
 void error_assign_type(struct ast_node *expr);
 void error_address_type(struct ast_node *expr);
-void error_undeclared(char *id);
-void error_declared(char *id);
+void error_undeclared(const char *id);
+void error_declared(const char *id);
+void error_struct_redefinition(const char *name);
+void error_struct_undefined(const char *name);
 
 void warning_imcompatible_ptr_assn(struct ast_node *expr);
 void warning_imcompatible_ptr_cmp(struct ast_node *expr);
