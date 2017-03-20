@@ -15,12 +15,13 @@
 
 #define IR_OPERAND_AST_NODE 0
 #define IR_OPERAND_TEMP_REG 1
-#define IR_OPERAND_LABEL    2
+#define IR_OPERAND_NODE_OFF 2
+#define IR_OPERAND_REG_OFF  3
 
 /*
  * An operand for a 3-point IR instruction.
  * It can either be an AST node representing a constant/ID,
- * or a temporary "register".
+ * a temporary "register", or an offset from either.
  */
 struct ir_operand {
 	int op_type;
@@ -28,6 +29,7 @@ struct ir_operand {
 		struct ast_node *node;
 		int reg;
 	};
+	size_t off;
 };
 
 #define IR_TEST   0xA0
