@@ -131,7 +131,6 @@ void symtab_destroy_scope(void)
 	--ntables;
 	HASH_ITER(hh, symtab_stack[ntables], s, tmp) {
 		HASH_DEL(symtab_stack[ntables], s);
-		free(s->id);
 		free(s);
 	}
 }

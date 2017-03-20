@@ -31,12 +31,6 @@ size_t type_size(struct type_information *type)
 
 static struct struct_struct *structs = NULL;
 
-struct struct_member {
-	const char *name;
-	struct type_information type;
-	size_t offset;
-};
-
 static void struct_add_members(struct struct_struct *s, struct ast_node *ast)
 {
 	struct struct_member member;
@@ -91,4 +85,16 @@ struct struct_struct *struct_find(const char *name)
 
 	HASH_FIND_STR(structs, name, s);
 	return s;
+}
+
+struct struct_member *struct_get_member(struct struct_struct *s,
+                                        const char *name)
+{
+	struct struct_member *m;
+
+	VECTOR_ITER(&s->members, m) {
+		if (strcmp(m->name, name) == 0)
+			return m;
+	}
+	return NULL;
 }

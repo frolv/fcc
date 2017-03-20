@@ -27,6 +27,12 @@ struct struct_struct {
 	UT_hash_handle hh;
 };
 
+struct struct_member {
+	const char *name;
+	struct type_information type;
+	size_t offset;
+};
+
 /*
  * A type flags bitfield is set up as follows:
  * PPPPPPPPxxxxxxxUxxxxxxxFxxxxTTTT
@@ -52,5 +58,7 @@ size_t type_size(struct type_information *type);
 
 struct struct_struct *struct_create(const char *name, struct ast_node *members);
 struct struct_struct *struct_find(const char *name);
+struct struct_member *struct_get_member(struct struct_struct *s,
+                                        const char *name);
 
 #endif /* FCC_TYPES_H */

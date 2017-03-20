@@ -33,7 +33,7 @@ struct ast_node *create_node(int tag, char *lexeme)
 			error_undeclared(lexeme);
 			exit(1);
 		}
-		n->lexeme = strdup(n->sym->id);
+		n->lexeme = n->sym->id;
 		memcpy(&n->expr_flags, &n->sym->flags, sizeof n->expr_flags);
 		break;
 	case NODE_NEWID:
@@ -44,7 +44,7 @@ struct ast_node *create_node(int tag, char *lexeme)
 			exit(1);
 		}
 		n->sym = symtab_add(lexeme, NULL);
-		n->lexeme = strdup(n->sym->id);
+		n->lexeme = n->sym->id;
 		memcpy(&n->expr_flags, &n->sym->flags, sizeof n->expr_flags);
 		break;
 	case NODE_CONSTANT:
@@ -64,6 +64,10 @@ struct ast_node *create_node(int tag, char *lexeme)
 	case NODE_STRLIT:
 		n->lexeme = strdup(lexeme);
 		n->expr_flags.type_flags = TYPE_STRLIT;
+		n->expr_flags.extra = NULL;
+		break;
+	case NODE_MEMBER:
+		n->lexeme = strdup(lexeme);
 		break;
 	default:
 		break;
@@ -254,7 +258,8 @@ static int is_lvalue(struct ast_node *expr)
 {
 	return (expr->tag == NODE_IDENTIFIER &&
 	        !FLAGS_IS_FUNC(expr->expr_flags.type_flags))
-	       || expr->tag == EXPR_DEREFERENCE;
+	       || expr->tag == EXPR_DEREFERENCE
+	       || expr->tag == EXPR_MEMBER;
 }
 
 /*
@@ -650,6 +655,33 @@ static void check_func_type(struct ast_node *expr)
 	       sizeof expr->expr_flags);
 }
 
+static void check_member_type(struct ast_node *expr)
+{
+	struct type_information *type;
+	struct struct_member *m;
+
+	type = &expr->left->expr_flags;
+	if (FLAGS_TYPE(type->type_flags) != TYPE_STRUCT
+	    || (FLAGS_IS_PTR(type->type_flags)
+	        && FLAGS_INDIRECTION(type->type_flags) != 1)) {
+		error_not_struct(expr);
+		exit(1);
+	}
+
+	if (FLAGS_IS_PTR(type->type_flags)) {
+		error_struct_pointer(expr);
+		exit(1);
+	}
+
+	if (!(m = struct_get_member(type->extra, expr->right->lexeme))) {
+		error_struct_member(expr);
+		exit(1);
+	}
+
+	memcpy(&expr->right->expr_flags, &m->type, sizeof m->type);
+	memcpy(&expr->expr_flags, &m->type, sizeof m->type);
+}
+
 static void (*expr_type_func[])(struct ast_node *) = {
 	[EXPR_ASSIGN]           = check_assign_type,
 	[EXPR_LOGICAL_OR]       = check_boolean_type,
@@ -676,7 +708,8 @@ static void (*expr_type_func[])(struct ast_node *) = {
 	[EXPR_UNARY_MINUS]      = check_unary_type,
 	[EXPR_NOT]              = check_bitop_type,
 	[EXPR_LOGICAL_NOT]      = check_boolean_type,
-	[EXPR_FUNC]             = check_func_type
+	[EXPR_FUNC]             = check_func_type,
+	[EXPR_MEMBER]           = check_member_type
 };
 
 /*
@@ -833,7 +866,8 @@ static char *expr_names[] = {
 	[EXPR_UNARY_MINUS]      = "UNARY_MINUS",
 	[EXPR_NOT]              = "NOT",
 	[EXPR_LOGICAL_NOT]      = "LOGICAL_NOT",
-	[EXPR_FUNC]             = "FUNCTION_CALL"
+	[EXPR_FUNC]             = "FUNCTION_CALL",
+	[EXPR_MEMBER]           = "MEMBER"
 };
 
 static void print_ast_depth(FILE *f, struct ast_node *root,
@@ -857,6 +891,7 @@ static void print_ast_depth(FILE *f, struct ast_node *root,
 
 	switch (root->tag) {
 	case NODE_IDENTIFIER:
+	case NODE_MEMBER:
 		if (f == stdout)
 			fprintf(f, "\x1B[0;37m");
 		fprintf(f, "ID: %s ", root->lexeme);

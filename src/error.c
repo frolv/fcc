@@ -173,6 +173,27 @@ void error_struct_undefined(const char *name)
 	PUTERR("type `struct %s' is unknown\n", name);
 }
 
+void error_not_struct(struct ast_node *expr)
+{
+	PUTERR("request for member `%s' in non-struct expression\n",
+	       expr->right->lexeme);
+}
+
+void error_struct_pointer(struct ast_node *expr)
+{
+	PUTERR("left side of \x1B[1;37m.\x1B[0;37m "
+	       "operator has type `\x1B[1;35m");
+	err_print_type(expr->left);
+	fprintf(stderr, "\x1B[0;37m'; did you mean \x1B[1;37m->\x1B[0;37m?\n");
+}
+
+void error_struct_member(struct ast_node *expr)
+{
+	PUTERR("`\x1B[1;35m");
+	err_print_type(expr->left);
+	fprintf(stderr, "\x1B[0;37m' has no member `%s'\n", expr->right->lexeme);
+}
+
 void warning_imcompatible_ptr_assn(struct ast_node *expr)
 {
 	PUTWARN("assignment from incompatible pointer type: `\x1B[1;35m");

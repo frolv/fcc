@@ -16,6 +16,9 @@ void error_undeclared(const char *id);
 void error_declared(const char *id);
 void error_struct_redefinition(const char *name);
 void error_struct_undefined(const char *name);
+void error_not_struct(struct ast_node *expr);
+void error_struct_pointer(struct ast_node *expr);
+void error_struct_member(struct ast_node *expr);
 
 void warning_imcompatible_ptr_assn(struct ast_node *expr);
 void warning_imcompatible_ptr_cmp(struct ast_node *expr);

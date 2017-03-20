@@ -453,7 +453,10 @@ postfix_expr
 		                 create_expr(EXPR_ADD, $1, $3),
 		                 NULL);
 	}
-	| postfix_expr '.' TOKEN_ID
+	| postfix_expr '.' TOKEN_ID {
+		$$ = create_expr(EXPR_MEMBER, $1,
+		                 create_node(NODE_MEMBER, yyget_text(scanner)));
+	}
 	| postfix_expr TOKEN_PTR TOKEN_ID
 	| postfix_expr TOKEN_INC
 	| postfix_expr TOKEN_DEC
