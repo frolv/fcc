@@ -175,7 +175,7 @@ void error_struct_undefined(const char *name)
 
 void error_not_struct(struct ast_node *expr)
 {
-	PUTERR("request for member `%s' in non-struct expression\n",
+	PUTERR("request for member `%s' of non-struct expression\n",
 	       expr->right->lexeme);
 }
 

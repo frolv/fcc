@@ -457,7 +457,11 @@ postfix_expr
 		$$ = create_expr(EXPR_MEMBER, $1,
 		                 create_node(NODE_MEMBER, yyget_text(scanner)));
 	}
-	| postfix_expr TOKEN_PTR TOKEN_ID
+	| postfix_expr TOKEN_PTR TOKEN_ID {
+		$$ = create_expr(EXPR_MEMBER,
+		                 create_expr(EXPR_DEREFERENCE, $1, NULL),
+		                 create_node(NODE_MEMBER, yyget_text(scanner)));
+	}
 	| postfix_expr TOKEN_INC
 	| postfix_expr TOKEN_DEC
 	| postfix_expr '(' ')' { $$ = create_expr(EXPR_FUNC, $1, NULL); }

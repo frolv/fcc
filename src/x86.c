@@ -174,6 +174,10 @@ static void tmp_reg_pop(struct x86_sequence *seq, int tmp_reg, int gpr)
 	}
 }
 
+static int x86_load_tmp_reg(struct x86_sequence *seq,
+                            struct ir_operand *tmp_reg,
+                            int gpr);
+
 /*
  * ir_to_x86_operand:
  * Converts an operand from IR to x86.
@@ -205,10 +209,20 @@ static void ir_to_x86_operand(struct x86_sequence *seq,
 			x->type = X86_OPERAND_LABEL;
 			break;
 		}
-	} else {
+	} else if (i->op_type == IR_OPERAND_TEMP_REG) {
 		x->type = X86_OPERAND_OFFSET;
 		x->offset.off = seq->tmp_reg.regs[i->reg];
 		x->offset.gpr = X86_GPR_SP;
+	} else if (i->op_type == IR_OPERAND_NODE_OFF) {
+		l = local_find(seq->locals, i->node->lexeme);
+		x->type = X86_OPERAND_OFFSET;
+		x->offset.off = l->offset + i->off;
+		x->offset.gpr = X86_GPR_BP;
+	} else {
+		x->type = X86_OPERAND_OFFSET;
+		x->offset.off = i->off;
+		i->op_type = IR_OPERAND_TEMP_REG;
+		x->offset.gpr = x86_load_tmp_reg(seq, i, X86_GPR_ANY);
 	}
 }
 
@@ -307,7 +321,9 @@ static void translate_assign_instruction(struct x86_sequence *seq,
 
 	out.instruction = X86_MOV;
 	out.size = type_size(&i->type);
-	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
+	if (i->lhs.op_type == IR_OPERAND_AST_NODE ||
+	    i->lhs.op_type == IR_OPERAND_NODE_OFF ||
+	    i->lhs.op_type == IR_OPERAND_REG_OFF) {
 		ir_to_x86_operand(seq, &i->lhs, &out.op2);
 	} else {
 		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_AX);

@@ -90,6 +90,9 @@ static void ir_parse_arguments(struct ir_sequence *ir,
 		inst.tag = IR_PUSH;
 		inst.lhs.op_type = IR_OPERAND_AST_NODE;
 		inst.lhs.node = arglist;
+	} else if (arglist->tag == EXPR_MEMBER) {
+		/* TODO */
+		inst.tag = IR_PUSH;
 	} else if (arglist->tag == EXPR_COMMA) {
 		ir_parse_arguments(ir, arglist->right, temps);
 		ir_parse_arguments(ir, arglist->left, temps);
@@ -105,6 +108,72 @@ static void ir_parse_arguments(struct ir_sequence *ir,
 	vector_append(&ir->seq, &inst);
 }
 
+static void ir_member_operand(struct ir_sequence *ir, struct ir_operand *op,
+                              struct ast_node *mem_expr, struct tmp_reg *temps)
+{
+	struct struct_member *m;
+
+	if (IS_TERM(mem_expr->left)) {
+		op->op_type = IR_OPERAND_NODE_OFF;
+		op->node = mem_expr->left;
+	} else {
+		op->op_type = IR_OPERAND_REG_OFF;
+		if (mem_expr->left->tag == EXPR_DEREFERENCE)
+			op->reg = ir_parse_lvalue_deref(ir, mem_expr->left, temps);
+		else
+			op->reg = ir_read_ast(ir, mem_expr->left, temps);
+	}
+
+	m = struct_get_member(mem_expr->left->expr_flags.extra,
+	                      mem_expr->right->lexeme);
+	op->off = m->offset;
+}
+
+static int ir_read_ast_member(struct ir_sequence *ir,
+                              struct ast_node *expr,
+                              struct tmp_reg *temps)
+{
+	struct ir_instruction inst;
+	struct ir_operand *other;
+	struct ast_node *node;
+
+	inst.tag = expr->tag;
+	memcpy(&inst.type, &expr->expr_flags, sizeof inst.type);
+
+	if (expr->left->tag == EXPR_MEMBER && expr->right->tag == EXPR_MEMBER) {
+		ir_member_operand(ir, &inst.lhs, expr->left, temps);
+		ir_member_operand(ir, &inst.rhs, expr->right, temps);
+		vector_append(&ir->seq, &inst);
+		inst.target = temps->next;
+		temps->next = temps->items[temps->next];
+		return inst.target;
+	}
+
+	if (expr->left->tag == EXPR_MEMBER) {
+		ir_member_operand(ir, &inst.lhs, expr->left, temps);
+		other = &inst.rhs;
+		node = expr->right;
+	} else {
+		ir_member_operand(ir, &inst.rhs, expr->right, temps);
+		other = &inst.lhs;
+		node = expr->left;
+	}
+
+	if (IS_TERM(node)) {
+		other->op_type = IR_OPERAND_AST_NODE;
+		other->node = node;
+		inst.target = temps->next;
+		temps->next = temps->items[temps->next];
+	} else {
+		other->op_type = IR_OPERAND_TEMP_REG;
+		other->reg = ir_read_ast(ir, node, temps);
+		inst.target = other->reg;
+	}
+
+	vector_append(&ir->seq, &inst);
+	return inst.target;
+}
+
 static int ir_read_ast(struct ir_sequence *ir,
                        struct ast_node *expr,
                        struct tmp_reg *temps)
@@ -112,7 +181,7 @@ static int ir_read_ast(struct ir_sequence *ir,
 	struct ir_instruction inst;
 	int tmp;
 
-	if (IS_TERM(expr))
+	if (IS_TERM(expr) || expr->tag == EXPR_MEMBER)
 		return -1;
 
 	inst.tag = expr->tag;
@@ -140,6 +209,8 @@ static int ir_read_ast(struct ir_sequence *ir,
 
 			inst.target = temps->next;
 			temps->next = temps->items[temps->next];
+		} else if (expr->left->tag == EXPR_MEMBER) {
+			/* TODO */
 		} else {
 			inst.lhs.op_type = IR_OPERAND_TEMP_REG;
 			inst.lhs.reg = ir_read_ast(ir, expr->left, temps);
@@ -171,6 +242,9 @@ static int ir_read_ast(struct ir_sequence *ir,
 			return ir_read_ast(ir, expr->right, temps);
 		}
 	}
+
+	if (expr->left->tag == EXPR_MEMBER || expr->right->tag == EXPR_MEMBER)
+		return ir_read_ast_member(ir, expr, temps);
 
 	if (IS_TERM(expr->left) && IS_TERM(expr->right)) {
 		/* Two terminal values: need a new temporary register. */
@@ -277,6 +351,12 @@ static void ir_print_operand(struct ir_operand *op)
 {
 	if (op->op_type == IR_OPERAND_TEMP_REG) {
 		printf("t%d", op->reg);
+		return;
+	} else if (op->op_type == IR_OPERAND_NODE_OFF) {
+		printf("%lu(%s)", op->off, op->node->lexeme);
+		return;
+	} else if (op->op_type == IR_OPERAND_REG_OFF) {
+		printf("%lu(t%d)", op->off, op->reg);
 		return;
 	}
 
