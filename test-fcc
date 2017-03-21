@@ -7,7 +7,7 @@ make
 
 echo
 
-for file in cond.c loop.c simp.c; do
+for file in cond.c loop.c simp.c struct.c; do
 	path="$testdir/$file"
 	echo "Running fcc on $path"
 	./fcc "$path"
