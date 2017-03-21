@@ -143,9 +143,9 @@ static int ir_read_ast_member(struct ir_sequence *ir,
 	if (expr->left->tag == EXPR_MEMBER && expr->right->tag == EXPR_MEMBER) {
 		ir_member_operand(ir, &inst.lhs, expr->left, temps);
 		ir_member_operand(ir, &inst.rhs, expr->right, temps);
-		vector_append(&ir->seq, &inst);
 		inst.target = temps->next;
 		temps->next = temps->items[temps->next];
+		vector_append(&ir->seq, &inst);
 		return inst.target;
 	}
 

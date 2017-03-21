@@ -149,7 +149,7 @@ static void tmp_reg_push(struct x86_sequence *seq, int tmp_reg, int gpr)
 }
 
 /*
- * tmp_reg_push:
+ * tmp_reg_pop:
  * Create an instruction to pop temporary register `tmp_reg` into register
  * `gpr`, and update temporary register offsets.
  */
