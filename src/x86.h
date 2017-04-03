@@ -56,7 +56,7 @@ enum {
 enum {
 	X86_GPR_AX,
 	X86_GPR_BX,
-	X86_GPR_CL,
+	X86_GPR_CX,
 	X86_GPR_DX,
 	X86_GPR_SI,
 	X86_GPR_DI,
@@ -65,7 +65,7 @@ enum {
 	X86_GPR_AL,
 	X86_GPR_AH,
 	X86_GPR_CH,
-	X86_GPR_CX,
+	X86_GPR_CL,
 	X86_GPR_ANY
 };
 
@@ -112,6 +112,7 @@ enum {
 
 struct x86_gprval {
 	int tag;
+	int used;
 	union {
 		int tmp_reg;
 		struct ast_node *node;
