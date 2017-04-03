@@ -1075,15 +1075,17 @@ void x86_translate(struct x86_sequence *seq, struct graph_node *g)
 
 	ir_init(&ir);
 
-	for (; g; g = g->next) {
+	while (g) {
 		ir_clear(&ir);
 
 		switch (g->type) {
 		case ASG_NODE_STATEMENT:
-			ir_parse_expr(&ir, ((struct asg_node_statement *)g)->ast,
-			              0);
+			for (; g && g->type == ASG_NODE_STATEMENT; g = g->next)
+				ir_parse_expr(&ir, ((struct asg_node_statement *)
+				                    g)->ast, 0);
+			ir_print_sequence(&ir);
 			x86_translate_expr(seq, &ir, 0);
-			break;
+			continue;
 		case ASG_NODE_CONDITIONAL:
 			x86_translate_cond(seq, &ir,
 			                   (struct asg_node_conditional *)g);
@@ -1100,6 +1102,7 @@ void x86_translate(struct x86_sequence *seq, struct graph_node *g)
 			x86_translate_ret(seq, &ir, (struct asg_node_return *)g);
 			break;
 		}
+		g = g->next;
 	}
 
 	ir_destroy(&ir);
