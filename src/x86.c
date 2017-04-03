@@ -314,11 +314,8 @@ static int x86_load_tmp_reg(struct x86_sequence *seq,
                             int gpr)
 {
 	struct x86_instruction out, last;
-	int poparg;
 
-	poparg = gpr;
 	ir_to_x86_operand(seq, tmp_reg, &out.op1, 0);
-
 	if (!out.op1.offset.off) {
 		/*
 		 * Item is on top of the stack.
@@ -328,11 +325,10 @@ static int x86_load_tmp_reg(struct x86_sequence *seq,
 		vector_get(&seq->seq, seq->seq.nmembs - 1, &last);
 		if (last.instruction == X86_PUSH) {
 			vector_pop(&seq->seq, NULL);
-			poparg = -1;
 
 			/* Keep item in the register it was popped from. */
 			if (gpr == X86_GPR_ANY) {
-				tmp_reg_pop(seq, tmp_reg->reg, poparg);
+				tmp_reg_pop(seq, tmp_reg->reg, -1);
 				if (!seq->gprs[last.op1.gpr].used) {
 					seq->gprs[last.op1.gpr].used = 1;
 					seq->gprs[last.op1.gpr].tag =
@@ -352,6 +348,8 @@ static int x86_load_tmp_reg(struct x86_sequence *seq,
 				out.op2.gpr = gpr;
 				vector_append(&seq->seq, &out);
 			}
+			tmp_reg_pop(seq, tmp_reg->reg, -1);
+			return gpr;
 		}
 		if (gpr == X86_GPR_ANY)
 			gpr = x86_gpr_any_get(seq);
@@ -637,61 +635,64 @@ static void translate_multiplicative_instruction(struct x86_sequence *seq,
 {
 	struct x86_instruction out;
 	struct x86_operand *op;
-	int ax, reg;
+	int set, gpr;
 
 	out.instruction = X86_IMUL;
 	out.size = 0;
 	out.op3.type = X86_OPERAND_GPR;
-	out.op3.gpr = X86_GPR_AX;
-	ax = 0;
+	set = 0;
 
+	x86_gpr_any_reset(seq);
 	if (i->lhs.op_type == IR_OPERAND_AST_NODE) {
 		switch (i->lhs.node->tag) {
 		case NODE_IDENTIFIER:
-			x86_load_value(seq, &i->lhs, X86_GPR_AX);
+			gpr = x86_load_value(seq, &i->lhs, X86_GPR_ANY);
 			out.op2.type = X86_OPERAND_GPR;
-			out.op2.gpr = X86_GPR_AX;
-			ax = 1;
+			out.op2.gpr = gpr;
+			out.op3.gpr = gpr;
+			set = 1;
 			break;
 		case NODE_CONSTANT:
 			ir_to_x86_operand(seq, &i->lhs, &out.op1, 0);
 			break;
 		}
 	} else {
-		x86_load_tmp_reg(seq, &i->lhs, X86_GPR_AX);
+		gpr = x86_load_tmp_reg(seq, &i->lhs, X86_GPR_ANY);
 		out.op2.type = X86_OPERAND_GPR;
-		out.op2.gpr = X86_GPR_AX;
-		ax = 1;
+		out.op2.gpr = gpr;
+		out.op3.gpr = gpr;
+		set = 1;
 	}
 
-	if (ax) {
-		reg = X86_GPR_DX;
+	if (set)
 		op = &out.op1;
-	} else {
-		reg = X86_GPR_AX;
+	else
 		op = &out.op2;
-	}
 
 	if (i->rhs.op_type == IR_OPERAND_AST_NODE) {
 		switch (i->rhs.node->tag) {
 		case NODE_IDENTIFIER:
-			x86_load_value(seq, &i->rhs, reg);
+			gpr = x86_load_value(seq, &i->rhs, X86_GPR_ANY);
 			op->type = X86_OPERAND_GPR;
-			op->gpr = reg;
+			op->gpr = gpr;
+			if (!set)
+				out.op3.gpr = gpr;
 			break;
 		case NODE_CONSTANT:
 			ir_to_x86_operand(seq, &i->rhs, &out.op1, 0);
 			break;
 		}
 	} else {
-		x86_load_tmp_reg(seq, &i->rhs, reg);
+		gpr = x86_load_tmp_reg(seq, &i->rhs, X86_GPR_ANY);
 		op->type = X86_OPERAND_GPR;
-		op->gpr = reg;
+		op->gpr = gpr;
+		if (!set)
+			out.op3.gpr = gpr;
 	}
 
-	seq->gprs[out.op2.gpr].tag = X86_GPRVAL_NONE;
+	seq->gprs[out.op3.gpr].tag = X86_GPRVAL_NONE;
 	vector_append(&seq->seq, &out);
-	tmp_reg_push(seq, i->target, X86_GPR_AX);
+	tmp_reg_push(seq, i->target, out.op3.gpr);
 
 	(void)cond;
 }
