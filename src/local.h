@@ -12,6 +12,11 @@
 
 #define LFLAGS_USED 0x1
 
+#define LFLAGS_REG_SHIFT 8
+#define LFLAGS_REG(lflags) (((lflags) >> LFLAGS_REG_SHIFT) & 0xF)
+#define LFLAGS_SET_REG(lflags, reg) \
+	(((lflags) & ~0x00000F00) | ((reg) << LFLAGS_REG_SHIFT))
+
 /* A local variable within a function. */
 struct local {
 	const char              *name;  /* variable name */

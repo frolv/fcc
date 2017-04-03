@@ -54,19 +54,19 @@ enum {
 };
 
 enum {
-	X86_GPR_ANY,
-	X86_GPR_AL,
-	X86_GPR_AH,
 	X86_GPR_AX,
 	X86_GPR_BX,
 	X86_GPR_CL,
-	X86_GPR_CH,
-	X86_GPR_CX,
 	X86_GPR_DX,
 	X86_GPR_SI,
 	X86_GPR_DI,
 	X86_GPR_SP,
-	X86_GPR_BP
+	X86_GPR_BP,
+	X86_GPR_AL,
+	X86_GPR_AH,
+	X86_GPR_CH,
+	X86_GPR_CX,
+	X86_GPR_ANY
 };
 
 enum {
@@ -104,9 +104,24 @@ struct x86_instruction {
 	struct x86_operand op3;
 };
 
+enum {
+	X86_GPRVAL_NONE,
+	X86_GPRVAL_NODE,
+	X86_GPRVAL_TMPREG
+};
+
+struct x86_gprval {
+	int tag;
+	union {
+		int tmp_reg;
+		struct ast_node *node;
+	};
+};
+
 struct x86_sequence {
 	struct vector seq;
 	struct local_vars *locals;
+	struct x86_gprval gprs[8];
 	struct {
 		int size;
 		int *regs;
